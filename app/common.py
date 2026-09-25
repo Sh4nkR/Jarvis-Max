@@ -21,7 +21,7 @@ DEFAULTS = {
     "voice": "en-GB-RyanNeural",
     "voice_rate": "+0%",
     "stt_model": "small.en",
-    "model": "",
+    "model": "sonnet",
     "brain_mode": "auto",          # auto: Claude first, local brain when Claude is out | claude | local
     "local_model": "qwen3.5:9b",
     "local_ctx": 12288,            # the local brain's working memory, in tokens
@@ -37,6 +37,8 @@ def load_config() -> dict:
     cfg = dict(DEFAULTS)
     try:
         cfg.update(json.loads((APP / "jarvis.json").read_text(encoding="utf-8")))
+    except FileNotFoundError:
+        pass                                   # first start: the defaults; the BRAIN menu creates the file
     except (OSError, ValueError) as e:
         print(f"  (jarvis.json unreadable, using defaults: {e})")
     return cfg

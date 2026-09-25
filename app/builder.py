@@ -455,8 +455,13 @@ async def github_publish(folder: str, repo: str, private: bool = False, message:
         code, out = await git(["init", "-b", "main"], d)
         if code:
             return f"git init failed: {out[:300]}"
+    # files committed earlier that .gitignore now keeps out (personal settings, old secrets) stop being published
+    code, out = await git(["ls-files", "-ci", "--exclude-standard"], d)
+    stale = [f for f in out.splitlines() if f.strip()]
+    if stale:
+        await git(["rm", "--cached", "--quiet", "--", *stale], d)
     code, out = await git(["ls-files", "--cached", "--others", "--exclude-standard"], d)
-    files = [f for f in out.splitlines() if f.strip()]
+    files = [f for f in out.splitlines() if f.strip() and (d / f).exists()]
     if not files:
         return "There's nothing in that folder to publish."
     found = await asyncio.to_thread(_scan, d, files)

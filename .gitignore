@@ -37,3 +37,6 @@ venv/
 node_modules/
 __pycache__/
 .jarvis-logs/
+
+# Personal settings (Jarvis creates this on first start)
+app/jarvis.json

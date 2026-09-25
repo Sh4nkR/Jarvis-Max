@@ -184,6 +184,8 @@ New repos are created by you: Jarvis opens GitHub's new-repo page with the name 
 
 ## Configuration (`app/jarvis.json`)
 
+`app/jarvis.json` holds your personal settings and is kept out of git. Jarvis creates it the first time you pick a brain, or you can create it yourself. Any key you leave out uses the default below.
+
 | Key | Default | Meaning |
 |---|---|---|
 | `name` | `"JARVIS"` | Assistant name shown in the window. |
@@ -227,7 +229,7 @@ Jarvis-Max/
    ├─ mouth.py         text-to-speech (edge-tts)
    ├─ signin.py        first-run Claude sign-in
    ├─ common.py        paths, settings, the BRAINS table, secrets
-   ├─ jarvis.json      settings
+   ├─ jarvis.json      your settings (created on first use, not in git)
    ├─ pyproject.toml, uv.lock
    ├─ face/            animated face (ai-visualizer, AGPL-3.0)
    └─ dock/            button dock (dock.js, dock.css)
