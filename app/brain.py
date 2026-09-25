@@ -1,9 +1,10 @@
 """The brain: a live Claude Code session through the Claude Agent SDK.
 
 This is the same brain jaredrhod's backtalk uses. It runs on Dr Wolf's Claude
-plan (no API key). Its working folder is Jarvis-Assistant/memory, so the
+plan (no API key). Its working folder is Jarvis-Max/memory, so the
 CLAUDE.md there is Jarvis's identity and the notes there are its memory.
 """
+import asyncio
 import logging
 import re
 import warnings
@@ -11,10 +12,11 @@ from pathlib import Path
 
 from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient,
                               PermissionResultAllow, PermissionResultDeny, ResultMessage,
-                              StreamEvent, ToolUseBlock)
+                              StreamEvent, ToolResultBlock, ToolUseBlock, UserMessage)
 
 import tools
 from common import CFG, MEMORY, load_config
+from growth import prompt_addon
 
 log = logging.getLogger("jarvis.brain")
 
@@ -64,6 +66,19 @@ VOICE, LOG, FACE and STOP.
   accounts. Get the page ready and hand it over to him.
 - Ask before you delete anything, send a message as him or install software.
 
+# Brains
+You are on the Claude brain. Jarvis can also run on Claude Sonnet, Claude Opus, Claude Haiku,
+a local Qwen model on this PC, Google's Gemini or Gemini Flash-Lite, or Auto (Claude first, local when his Claude limit
+runs out). When
+he asks to change brain or model, call switch_brain straight away; it restarts Jarvis and
+confirms the new brain on startup. Never edit jarvis.json or restart Jarvis yourself.
+When he tells you to go to your lessons, classes or daily learning, call start_lessons.
+
+# GitHub builds and publishing
+To download, build or install a GitHub project: project_start, read him the plan, wait for his go,
+then project_next once per step (project_ask when a step fails). To push a folder to his GitHub:
+github_publish. Use these tools, not your own git or build commands.
+
 # Memory
 Your working folder is your memory vault; CLAUDE.md there explains it. When he says
 "remember", or you learn something he'd want kept, write it into the right note in
@@ -100,16 +115,31 @@ def _inside_memory(p: str) -> bool:
 def describe(name: str, inp: dict) -> str:
     """One line a person can read, for the log and permission prompts."""
     n = name.replace(f"mcp__{tools.SERVER_NAME}__", "")
-    if n in ("Bash", "PowerShell"):
+    if n == "project_download":
+        return f"download {inp.get('url', '')} into Desktop\\Jarvis-Builds ({inp.get('facts', '')})"
+    if n == "github_publish":
+        return (f"publish {inp.get('folder', '')} to {inp.get('repo', '')} as {inp.get('visibility', '')} "
+                f"({inp.get('files', 0)} files: {inp.get('top', '')}). README starts: {inp.get('readme', '')}")
+    if n in ("Bash", "PowerShell", "run_command"):
         return f"run a command: {inp.get('command', '')}"
-    if n in WRITES:
-        return f"change the file {inp.get('file_path') or inp.get('notebook_path', '')}"
-    if n == "WebSearch":
+    if n in WRITES or n in ("write_file", "add_to_note"):
+        return f"change the file {inp.get('file_path') or inp.get('notebook_path') or inp.get('path', '')}"
+    if n in ("WebSearch", "web_search"):
         return f"search the web: {inp.get('query', '')}"
-    if n == "WebFetch":
+    if n == "research":
+        return f"research: {inp.get('question', '')}"
+    if n == "multi_search":
+        return f"multi search: {inp.get('term', '')}"
+    if n in ("WebFetch", "read_webpage"):
         return f"read the page {inp.get('url', '')}"
-    if n == "Read":
-        return f"read {inp.get('file_path', '')}"
+    if n in ("Read", "read_file", "read_note"):
+        return f"read {inp.get('file_path') or inp.get('path', '')}"
+    if n == "list_folder":
+        return f"look in {inp.get('path') or 'the home folder'}"
+    if n == "switch_brain":
+        return f"switch brain: {inp.get('brain', '')}"
+    if n == "wait":
+        return f"wait {inp.get('seconds', '')} s"
     if n == "click_text":
         return f'click "{inp.get("text", "")}"'
     if n == "type_text":
@@ -124,7 +154,8 @@ def describe(name: str, inp: dict) -> str:
     pretty = {"look_at_screen": "look at the screen", "read_screen_text": "read the screen",
               "look_through_camera": "look through the camera", "list_windows": "list windows",
               "click_at": f"click at {inp.get('x')},{inp.get('y')}", "scroll": f"scroll {inp.get('direction', '')}",
-              "Glob": "look through files", "Grep": "search inside files", "TodoWrite": "plan the steps"}
+              "Glob": "look through files", "Grep": "search inside files", "TodoWrite": "plan the steps",
+              "list_notes": "look through my notes"}
     return pretty.get(n, n)
 
 
@@ -136,11 +167,14 @@ class Brain:
         self._gate = permission_gate    # async (tool_name, input) -> bool
         self.busy = False
         self._interrupted = False
+        self.model_id = ""              # the model Claude Code really runs, checked at start
+        self.model_check = None         # the task that checks it
+        self.on_model = None            # async callback once it's known (the server repaints)
 
     def _options(self) -> ClaudeAgentOptions:
         kw = dict(
             cwd=str(MEMORY),
-            system_prompt={"type": "preset", "preset": "claude_code", "append": VOICE_RULES},
+            system_prompt={"type": "preset", "preset": "claude_code", "append": VOICE_RULES + prompt_addon()},
             setting_sources=["project"],            # loads memory/CLAUDE.md
             include_partial_messages=True,          # word-by-word, so speech starts early
             permission_mode="default",
@@ -150,6 +184,7 @@ class Brain:
             # Load the eyes/hands tools up front. Otherwise the brain makes an extra round
             # trip to look them up, which is a noticeable pause in a voice reply.
             env={"ENABLE_TOOL_SEARCH": "false"},
+            stderr=lambda line: log.warning("claude code says: %s", line.rstrip()[:300]),
         )
         # Re-read jarvis.json so a brain switch (Sonnet/Opus) applies on a fresh conversation
         # without restarting the whole app.
@@ -163,7 +198,21 @@ class Brain:
         self.client = ClaudeSDKClient(options=self._options())
         await self.client.connect()
         self.status, self.error = "ready", ""
+        self.model_id = ""
         log.info("brain connected (working folder %s)", MEMORY)
+        self.model_check = asyncio.create_task(self._read_model())
+
+    async def _read_model(self) -> str:
+        """Ask Claude Code which model it's really running (no message is sent to Claude)."""
+        try:
+            usage = await asyncio.wait_for(self.client.get_context_usage(), 60)
+            self.model_id = (usage or {}).get("model") or ""
+            log.info("brain model: %s", self.model_id or "?")
+        except Exception as e:
+            log.warning("couldn't read the brain's model: %s", type(e).__name__)
+        if self.on_model:
+            await self.on_model()
+        return self.model_id
 
     async def stop(self):
         if self.client:
@@ -227,6 +276,7 @@ class Brain:
 
             buf = ""
             said_before = False                     # separates text blocks split by tool use
+            names = {}                              # tool id -> tool name
             async for msg in self.client.receive_response():
                 if isinstance(msg, StreamEvent):
                     ev = msg.event or {}
@@ -255,7 +305,16 @@ class Brain:
                         yield ("error", self._explain(str(msg.error)))
                     for block in msg.content:
                         if isinstance(block, ToolUseBlock):
+                            names[block.id] = block.name
                             yield ("tool", block.name, block.input or {})
+                elif isinstance(msg, UserMessage) and isinstance(msg.content, list):
+                    for block in msg.content:                   # tool results, for the growth log
+                        if isinstance(block, ToolResultBlock):
+                            c = block.content
+                            text = c if isinstance(c, str) else " ".join(
+                                x.get("text", "") for x in (c or []) if isinstance(x, dict))
+                            yield ("tool_result", names.get(block.tool_use_id, "?"), (text or "")[:300],
+                                   bool(block.is_error))
                 elif isinstance(msg, ResultMessage):
                     if msg.is_error and not self._interrupted:   # STOP is not an error
                         yield ("error", self._explain(str(msg.result or msg.subtype)))

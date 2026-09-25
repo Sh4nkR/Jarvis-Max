@@ -2,7 +2,7 @@ JARVIS ASSISTANT
 ================
 
 TO START
-  Click  Start-Jarvis-Assistant.bat  once. Jarvis's window opens by itself.
+  Click  Start-Jarvis-Max.bat  once. Jarvis's window opens by itself.
 
   A black window also opens. That's Jarvis's engine. Leave it open; closing it
   switches Jarvis off. If you close only Jarvis's window, clicking the .bat again
@@ -31,8 +31,18 @@ THE BUTTONS
   HANDS     ON = Jarvis may use your mouse and keyboard. OFF = look, don't touch.
   VOICE     Spoken replies on or off.
   LOG       The whole conversation. There's a button at the bottom to start fresh.
+  BRAIN     Pick Jarvis's brain: Claude Sonnet, Opus or Haiku (quickest), Gemini,
+            Gemini Flash-Lite (quickest Gemini, same key), Local Qwen (on this
+            PC) or Auto (Claude first, local when your Claude limit runs out).
+            Jarvis restarts by itself (about 15 seconds) and then says which
+            brain really came up. You can also just say "switch to Opus".
+            Gemini asks once for a Gemini API key (free at aistudio.google.com/apikey);
+            it's kept in the secrets folder and never goes to GitHub.
   FACE      Switches between Jarvis four faces: Circuit Board, Radial,
             Face in the Code and Neural Core.
+  THUMBS    Thumbs up = that answer was right. Thumbs down = wrong (type what was
+            wrong in the box first if you like). Saying "no, I meant..." or
+            "wrong" counts as thumbs down; "perfect" or "well done" as thumbs up.
   STOP      Stops Jarvis at once, mid-sentence or mid-task. Keyboard: Esc.
 
   The four chips at the top say whether BRAIN, EARS, VOICE and HANDS are ready.
@@ -40,6 +50,39 @@ THE BUTTONS
 EMERGENCY STOP FOR THE HANDS
   Push the mouse into any corner of the screen. That halts any mouse or keyboard
   action Jarvis is doing.
+
+LOCAL BRAIN (Qwen, on this PC)
+  Jarvis has a second brain that runs on your own laptop through Ollama. It can
+  still go online: research, web search, reading pages and your multi search, plus
+  the screen, camera, mouse, keyboard, files and PowerShell (commands ask ALLOW).
+  The BRAIN chip says LOCAL when it's answering.
+  The BRAIN button picks the brain (it writes "brain_mode" in app\jarvis.json):
+    "local"  always the local brain
+    "auto"   Claude first; the local brain when your Claude limit runs out
+             (for 30 minutes) or Claude can't be reached
+    "claude" Claude only
+
+JARVIS LEARNS EVERY NIGHT
+  Every request is logged (logs\turns.jsonl) with your thumbs. Once a day, at
+  night when you're not using him, the local Qwen brain (free) reviews the day:
+    - lessons from what went wrong        -> memory\notes\Lessons.md
+    - step-by-step skills from jobs that worked -> memory\notes\Skills.md
+  Then it rewrites ALL old + new lessons and skills (and any memory note that
+  changed) as one fresh, short bullet list: no repeats, no contradictions (the
+  newest point wins). Originals are copied to memory\.growth\archive first.
+  A test sheet of your real requests is run before and after; if the score
+  drops, the old lessons and skills come back. Every brain reads the lessons.
+  LOG panel > LEARN NOW does it straight away. Needs Ollama running.
+
+GITHUB: BUILD AND PUBLISH
+  Say "download and install github.com/<owner>/<project>". Jarvis shows you the
+  project's stars and last update, downloads it to Desktop\Jarvis-Builds, and a
+  stronger AI (Claude, or Gemini) writes a checklist (PLAN.md). Jarvis works through
+  it one step at a time (ALLOW each), asks the stronger AI when a step fails, and
+  stops after 3 tries on one step.
+  Say "push <folder> to GitHub as <name>". Jarvis checks for keys and private files,
+  writes a README if needed, shows you a preview (ALLOW), then pushes. For a new
+  repo he opens GitHub's page; you click Create repository.
 
 WHEN JARVIS ASKS PERMISSION
   Before Jarvis runs a command that changes something on your PC, or edits a file

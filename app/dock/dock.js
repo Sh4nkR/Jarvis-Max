@@ -2,8 +2,8 @@
    His face files are served unchanged. This script loads first and does two jobs:
    1. It answers the face's "/state" question from here, with the real voice
       waveform of what Jarvis is saying, so the face moves with the actual speech.
-   2. It builds the dock: TALK, type box, SEND, CAMERA, SCREEN, SEARCH, MEMORY,
-      HANDS, VOICE, LOG, FACE, STOP. Every control is a single click. */
+   2. It builds the dock: TALK, LISTEN, type box, SEND, CAMERA, SCREEN, SEARCH, MEMORY,
+      HANDS, VOICE, LOG, FACE, BRAIN, STOP. Every control is a single click. */
 "use strict";
 (() => {
   /* ------------------------------------------------ the face's signal bus -- */
@@ -33,6 +33,9 @@
     log: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>',
     face: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 10v10"/></svg>',
     stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>',
+    up: '<svg viewBox="0 0 24 24"><path d="M7 11v9H4v-9zM7 11l4-8a2 2 0 0 1 3 2l-1 5h6a2 2 0 0 1 2 2.3l-1.3 6.5A2 2 0 0 1 17.7 20H7"/></svg>',
+    down: '<svg viewBox="0 0 24 24"><path d="M7 13V4H4v9zM7 13l4 8a2 2 0 0 0 3-2l-1-5h6a2 2 0 0 0 2-2.3l-1.3-6.5A2 2 0 0 0 17.7 4H7"/></svg>',
+    brain: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>',
   };
 
   let ws = null, status = {}, voiceOn = true, camStream = null, rec = null;
@@ -155,6 +158,8 @@
           <button id="jv-free" title="Hands-free: Jarvis listens on its own and answers when you pause. Click again to turn it off.">${ICON.mic}<span>LISTEN</span></button>
           <input id="jv-input" type="text" autocomplete="off" spellcheck="false" placeholder="Type to Jarvis, press Enter">
           <button id="jv-send">${ICON.send}SEND</button>
+          <button id="jv-good" class="jv-verdict" title="That answer was right. Jarvis keeps doing it that way.">${ICON.up}</button>
+          <button id="jv-bad" class="jv-verdict" title="That answer was wrong. Type what was wrong in the box first if you like; Jarvis learns from it tonight.">${ICON.down}</button>
         </div>
         <div class="jv-row jv-tools">
           <button id="jv-camera" title="Camera on/off. While on, Jarvis sees what the camera sees with each question.">${ICON.cam}CAMERA</button>
@@ -165,12 +170,24 @@
           <button id="jv-voice" title="Spoken replies on/off">${ICON.voice}<span>VOICE</span></button>
           <button id="jv-log" title="The whole conversation">${ICON.log}LOG</button>
           <button id="jv-face" title="Switch Jarvis's face">${ICON.face}FACE</button>
+          <button id="jv-brainbtn" title="Choose Jarvis's brain: Claude Sonnet, Opus or Haiku, Local Qwen, Gemini, Gemini Flash-Lite or Auto">${ICON.brain}BRAIN</button>
           <button id="jv-stop" title="Stop (Esc)">${ICON.stop}STOP</button>
         </div>
       </div>
       <div id="jv-panel"><header><span id="jv-ptitle">LOG</span><button id="jv-pclose">CLOSE</button></header><div class="jv-body" id="jv-pbody"></div></div>
       <div class="jv-card" id="jv-perm"><h2>PERMISSION NEEDED</h2><p>Jarvis wants to:</p><code id="jv-permtext"></code>
         <div class="btns"><button class="jv-yes" id="jv-allow">ALLOW</button><button class="jv-no" id="jv-deny">DENY</button></div></div>
+      <div class="jv-card" id="jv-brains"><h2>CHOOSE THE BRAIN</h2>
+        <div class="jv-brainopts" id="jv-brainopts"></div>
+        <p class="jv-small">Jarvis restarts its brain to switch (about 10 seconds), then says which brain came up.</p></div>
+      <div class="jv-card" id="jv-restart"><h2>RESTARTING JARVIS</h2>
+        <p id="jv-restart-msg">Switching brain…</p></div>
+      <div class="jv-card" id="jv-gemkey"><h2>GEMINI API KEY</h2>
+        <p>The Gemini brain needs a Gemini API key (free from Google).</p>
+        <p class="jv-small">On any browser: open <b>aistudio.google.com/apikey</b>, sign in with your Google account, click <b>Create API key</b>, copy it, and paste it here.</p>
+        <input id="jv-gemkey-in" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the key here">
+        <p class="jv-small" id="jv-gemkey-msg"></p>
+        <div class="btns"><button class="jv-yes" id="jv-gemkey-save">SAVE KEY</button><button class="jv-no" id="jv-gemkey-close">LATER</button></div></div>
       <div class="jv-card" id="jv-signin"><h2>ONE-TIME SIGN-IN</h2>
         <p>Jarvis's brain is Claude Code on your Claude plan. It needs you to sign in once.</p>
         <p id="jv-signin-msg">Press SIGN IN. A Claude page opens in your browser: sign in and click <b>Authorize</b>. Then come back here.</p>
@@ -191,10 +208,16 @@
     // a focused dock button must not also fire the face's Space/C/F shortcuts
     $("jv-dock").addEventListener("keydown", (e) => { if (e.key !== "F2" && e.key !== "Escape") e.stopPropagation(); });
     $("jv-panel").addEventListener("keydown", (e) => e.stopPropagation());
+    $("jv-brains").addEventListener("keydown", (e) => e.stopPropagation());
+    $("jv-gemkey").addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") saveGeminiKey(); });
+    $("jv-gemkey-save").onclick = saveGeminiKey;
+    $("jv-gemkey-close").onclick = () => { gemKeyLater = true; $("jv-gemkey").classList.remove("show"); };
 
     $("jv-talk").onclick = talk;
     $("jv-free").onclick = toggleListen;
     $("jv-send").onclick = submit;
+    $("jv-good").onclick = () => verdict(true);
+    $("jv-bad").onclick = () => verdict(false);
     $("jv-camera").onclick = toggleCamera;
     $("jv-screen").onclick = () => { const t = input.value.trim(); input.value = ""; ask(t || "Look at my screen. What's on it?", { screen: true }); };
     $("jv-search").onclick = searchClick;
@@ -208,6 +231,11 @@
     };
     $("jv-log").onclick = openLog;
     $("jv-face").onclick = nextFace;
+    $("jv-brainbtn").onclick = () => $("jv-brains").classList.contains("show") ? closeBrains() : openBrains();
+    // the brain menu closes when you click anywhere else
+    addEventListener("pointerdown", (e) => {
+      if ($("jv-brains").classList.contains("show") && !e.target.closest("#jv-brains, #jv-brainbtn")) closeBrains();
+    }, true);
     $("jv-stop").onclick = stopAll;
     $("jv-pclose").onclick = () => $("jv-panel").classList.remove("open");
     $("jv-allow").onclick = () => answerPermission(true);
@@ -228,7 +256,7 @@
   }
   function send(obj) {
     if (ws && ws.readyState === 1) { ws.send(JSON.stringify(obj)); return true; }
-    toast("Jarvis isn't running. Start it with Start-Jarvis-Assistant.bat.");
+    toast("Jarvis isn't running. Start it with Start-Jarvis-Max.bat.");
     return false;
   }
 
@@ -237,6 +265,22 @@
     switch (d.type) {
       case "hello":
         status = d.status || {}; history = d.history || []; paint(); refreshLog();
+        if (restarting && !status.switching) {        // the new Jarvis, not the old one on its way out
+          restarting = false; clearTimeout(restartT);
+          $("jv-restart").classList.remove("show");
+          toast("Jarvis is back. Checking the new brain…", "ok");
+        }
+        break;
+      case "restarting": showRestarting(d.label); break;
+      case "restarted":
+        restarting = false; clearTimeout(restartT);
+        $("jv-restart").classList.remove("show");
+        toast("Brain restarted. Checking which one came up…", "ok");
+        break;
+      case "announce":
+        history.push({ who: "jarvis", text: d.text }); refreshLog();
+        toast(d.text, "ok", 15000);
+        enqueue({ text: d.text, audio: d.audio });
         break;
       case "status": status = d.status || {}; paint(); break;
       case "turn_start":
@@ -268,7 +312,7 @@
         if ($("jv-perm").dataset.id === d.id) $("jv-perm").classList.remove("show"); break;
       case "camera_request": cameraRequest(d.id); break;
       case "cleared": history = []; replyText = ""; $("jv-you").textContent = ""; $("jv-reply").textContent = ""; refreshLog(); break;
-      case "toast": toast(d.text); break;
+      case "toast": toast(d.text, d.kind || "", d.kind === "ok" ? 15000 : 6000); break;
     }
   }
 
@@ -481,17 +525,37 @@
     return items.map((m) => `<div class="jv-msg ${m.who === "you" ? "you" : ""}"><div class="who">${m.who === "you" ? "YOU" : "JARVIS"}</div><div class="txt">${esc(m.text)}</div></div>`).join("")
       || "<p>Nothing said yet.</p>";
   }
+  const LOG_BUTTONS = `<button class="jv-panelbtn" id="jv-new">START A FRESH CONVERSATION</button>` +
+    `<button class="jv-panelbtn" id="jv-learn" title="Jarvis does this by himself every night">LEARN NOW: TODAY'S LESSONS AND SKILLS</button>`;
+  function wireLogButtons() {
+    $("jv-new").onclick = () => { send({ type: "new_session" }); $("jv-panel").classList.remove("open"); };
+    $("jv-learn").onclick = async () => {
+      try {
+        const j = await (await realFetch("/api/grow", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json();
+        toast(j.message, "ok");
+      } catch (e) { toast("Jarvis isn't running."); }
+    };
+  }
+  async function verdict(good) {
+    const box = $("jv-input"), note = good ? "" : box.value.trim();
+    if (note) box.value = "";
+    try {
+      const r = await realFetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ good, note }) });
+      const j = await r.json();
+      toast(j.message, j.ok ? "ok" : "");
+    } catch (e) { toast("Jarvis isn't running."); }
+  }
   function openLog() {
     if ($("jv-panel").classList.contains("open") && $("jv-ptitle").textContent === "LOG") { $("jv-panel").classList.remove("open"); return; }
-    openPanel("LOG", logHtml() + `<button class="jv-panelbtn" id="jv-new">START A FRESH CONVERSATION</button>`);
+    openPanel("LOG", logHtml() + LOG_BUTTONS);
     $("jv-pbody").scrollTop = 1e9;
-    $("jv-new").onclick = () => { send({ type: "new_session" }); $("jv-panel").classList.remove("open"); };
+    wireLogButtons();
   }
   function refreshLog() {
     if ($("jv-panel").classList.contains("open") && $("jv-ptitle").textContent === "LOG") {
       const b = $("jv-pbody"), atEnd = b.scrollHeight - b.scrollTop - b.clientHeight < 40;
-      b.innerHTML = logHtml() + `<button class="jv-panelbtn" id="jv-new">START A FRESH CONVERSATION</button>`;
-      $("jv-new").onclick = () => { send({ type: "new_session" }); $("jv-panel").classList.remove("open"); };
+      b.innerHTML = logHtml() + LOG_BUTTONS;
+      wireLogButtons();
       if (atEnd) b.scrollTop = 1e9;
     }
   }
@@ -520,12 +584,65 @@
     location.href = `/face/faces/${next}/index.html`;
   }
 
+  /* ---------------------------------------------------------- gemini key -- */
+  let gemKeyLater = false;
+  async function saveGeminiKey() {
+    const key = $("jv-gemkey-in").value.trim(), msg = $("jv-gemkey-msg");
+    if (!key) { msg.textContent = "Paste the key first."; return; }
+    msg.textContent = "Checking the key with Google…";
+    try {
+      const r = await realFetch("/api/gemini_key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
+      const j = await r.json();
+      msg.textContent = j.message || "";
+      if (j.ok) { $("jv-gemkey-in").value = ""; setTimeout(() => $("jv-gemkey").classList.remove("show"), 1200); }
+    } catch (e) { msg.textContent = "Jarvis isn't running."; }
+  }
+
+  /* --------------------------------------------------------------- brain -- */
+  let restarting = false, restartT = null;
+  function closeBrains() { $("jv-brains").classList.remove("show"); $("jv-brainbtn").classList.remove("lit"); }
+  async function openBrains() {
+    const box = $("jv-brainopts"), menu = $("jv-brains"), btn = $("jv-brainbtn").getBoundingClientRect();
+    box.innerHTML = "<p>Loading…</p>";
+    // a menu that opens straight up from the BRAIN button
+    menu.style.left = Math.max(16, Math.min(btn.right - 460, innerWidth - 476)) + "px";
+    menu.style.bottom = (innerHeight - btn.top + 12) + "px";
+    menu.classList.add("show");
+    $("jv-brainbtn").classList.add("lit");
+    let info;
+    try { info = await (await realFetch("/api/brain")).json(); }
+    catch (e) { box.innerHTML = "<p>Jarvis isn't running.</p>"; return; }
+    box.innerHTML = info.choices.map((c) =>
+      `<button class="jv-brainopt${c.id === info.current ? " now" : ""}" data-id="${esc(c.id)}">
+         <b>${esc(c.label)}${c.id === info.current ? " <em>NOW</em>" : ""}</b><small>${esc(c.about)}</small></button>`).join("");
+    box.querySelectorAll(".jv-brainopt").forEach((b) => b.onclick = () => pickBrain(b.dataset.id, b.querySelector("b").textContent.replace(/\s*NOW$/, "")));
+  }
+  async function pickBrain(id, label) {
+    closeBrains();
+    showRestarting(label);
+    try {
+      const r = await realFetch("/api/brain", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ choice: id }) });
+      const j = await r.json();
+      if (!j.ok) { restarting = false; $("jv-restart").classList.remove("show"); toast(j.message || "Couldn't switch."); }
+    } catch (e) { /* the server may already be restarting */ }
+  }
+  function showRestarting(label) {
+    if (restarting) return;
+    restarting = true; stopAudio();
+    $("jv-restart-msg").textContent = `Switching to ${label}. Jarvis is restarting its brain; back in about 10 seconds.`;
+    $("jv-restart").classList.add("show");
+    clearTimeout(restartT);
+    restartT = setTimeout(() => {
+      $("jv-restart-msg").textContent = "Jarvis didn't come back by itself. Click Start-Jarvis-Max.bat on your Desktop.";
+    }, 120000);
+  }
+
   /* -------------------------------------------------------------- paint -- */
   let toastT = null;
-  function toast(t) {
+  function toast(t, kind = "", ms = 6000) {
     const el = $("jv-toast"); if (!el) return;
-    el.textContent = t; el.classList.add("show");
-    clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 6000);
+    el.textContent = t; el.className = "show" + (kind ? " " + kind : "");
+    clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), ms);
   }
   function chip(id, cls, label) {
     const el = $(id); if (!el) return;
@@ -534,8 +651,9 @@
   function paint() {
     if (!$("jv-dock")) return;
     const b = status.brain;
-    chip("jv-c-brain", b === "ready" ? "ok" : b === "starting" ? "wait" : "bad",
-      { ready: "READY", starting: "STARTING", signin: "SIGN IN", error: "ERROR", offline: "OFFLINE" }[b] || "…");
+    chip("jv-c-brain", b === "ready" || b === "local" ? "ok" : b === "starting" ? "wait" : "bad",
+      (b === "ready" || b === "local") && status.brain_name ? status.brain_name
+        : { starting: "STARTING", signin: "SIGN IN", needs_key: "KEY NEEDED", error: "ERROR", offline: "OFFLINE" }[b] || "…");
     const e = status.ears;
     chip("jv-c-ears", e === "ready" ? "ok" : e === "loading" ? "wait" : "bad",
       { ready: "READY", loading: "LOADING", error: "ERROR" }[e] || "…");
@@ -554,6 +672,8 @@
     $("jv-voice").classList.toggle("off", !voiceOn);
     $("jv-voice").innerHTML = (voiceOn ? ICON.voice : ICON.mute) + `<span>${voiceOn ? "VOICE ON" : "MUTED"}</span>`;
     $("jv-signin").classList.toggle("show", b === "signin");
+    if (b === "needs_key" && !gemKeyLater) $("jv-gemkey").classList.add("show");
+    if (b !== "needs_key") gemKeyLater = false;
     if (b === "error" && status.brain_error) $("jv-c-brain").title = status.brain_error;
   }
 

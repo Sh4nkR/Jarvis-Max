@@ -16,3 +16,24 @@ memory/
 # OS junk
 Thumbs.db
 .DS_Store
+
+# API keys - never for GitHub
+secrets/
+
+# Old update packages (not source)
+Jarvis-update-accent/
+Jarvis-update-accent.zip
+
+# Kept out of GitHub by Jarvis (keys, personal notes, logs, installs)
+.env
+*.env
+*.pem
+*.key
+*.pfx
+id_rsa*
+*.kdbx
+.venv/
+venv/
+node_modules/
+__pycache__/
+.jarvis-logs/

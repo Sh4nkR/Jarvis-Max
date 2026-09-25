@@ -6,7 +6,13 @@
   "voice": "en-GB-RyanNeural",
   "voice_rate": "+0%",
   "stt_model": "small.en",
-  "model": "claude-sonnet-5",
+  "model": "haiku",
+  "brain_mode": "local",
+  "local_model": "qwen3.5:9b",
+  "local_ctx": 12288,
+  "search_region": "in-en",
   "hands_on_at_start": true,
-  "open_window": true
+  "open_window": true,
+  "gemini_model": "gemini-3.5-flash-lite",
+  "github_user": "Sh4nkR"
 }

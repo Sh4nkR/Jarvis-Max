@@ -24,6 +24,8 @@ import subprocess
 import sys
 import time
 import types
+
+import builder
 import webbrowser
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
@@ -34,6 +36,8 @@ from common import IS_WIN, TMP
 class _State:
     hands = True                 # the HANDS button in the window flips this
     camera_provider = None       # set by the server: async () -> (b64 jpeg | None, note)
+    brain_switcher = None        # set by the server: async (choice) -> str
+    learner = None               # set by the server: async () -> str (starts the daily learning)
 
 
 STATE = _State()
@@ -467,8 +471,93 @@ async def look_through_camera(args):
                         {"type": "text", "text": "Camera picture from the Jarvis window."}]}
 
 
+@tool("switch_brain",
+      "Switch Jarvis to another brain. Jarvis restarts (about 15 seconds) and confirms the "
+      "new brain when it's back. brain: 'sonnet' (Claude Sonnet), 'opus' (Claude Opus), 'haiku' (Claude Haiku), "
+      "'claude' (Claude with the last Claude model used), 'local' (Qwen on this PC), "
+      "'gemini' (Google's Gemini), 'gemini-lite' (Gemini Flash-Lite) or 'auto' (Claude first, local when the Claude limit runs "
+      "out). Use it whenever Dr Wolf "
+      "asks to change brain or model. Never edit jarvis.json or restart Jarvis any other way.",
+      {"type": "object",
+       "properties": {"brain": {"type": "string", "enum": ["sonnet", "opus", "haiku", "claude", "local", "gemini", "gemini-lite", "auto"]}},
+       "required": ["brain"]})
+@errors_as_words
+async def switch_brain(args):
+    if STATE.brain_switcher is None:
+        return _say("Brain switching isn't available right now.", err=True)
+    return _say(await STATE.brain_switcher((args.get("brain") or "").strip().lower()))
+
+
+@tool("start_lessons",
+      "Start your daily learning right now: lessons from mistakes, skills from jobs that worked, "
+      "a tidy rewrite of your notes, and your test sheet. It runs on the local brain in the "
+      "background for a few minutes, and you announce the result out loud when it's done. Use it "
+      "whenever Dr Wolf tells you to go to your lessons, classes or daily learning. Never pretend "
+      "to learn without calling it.",
+      {"type": "object", "properties": {}})
+@errors_as_words
+async def start_lessons(args):
+    if STATE.learner is None:
+        return _say("Learning isn't available right now.", err=True)
+    return _say(await STATE.learner())
+
+
+_EMPTY = {"type": "object", "properties": {}}
+
+
+@tool("project_start",
+      "Download a GitHub project into Desktop\\Jarvis-Builds and get a step-by-step install plan "
+      "(a checklist, PLAN.md) written by the consultant AI. Use it when Dr Wolf asks to download, "
+      "build or install something from GitHub. Afterwards read him the plan in short lines and wait "
+      "for his go. source: the GitHub link or owner/name.",
+      {"type": "object", "properties": {"source": {"type": "string"}}, "required": ["source"]})
+@errors_as_words
+async def project_start(args):
+    return _say(await builder.project_start(args.get("source", "")))
+
+
+@tool("project_next",
+      "Run the next unticked step of the current build (he clicks ALLOW), tick it off and report. "
+      "Call it once per step. Never run build commands any other way.", _EMPTY)
+@errors_as_words
+async def project_next(args):
+    return _say(await builder.project_next())
+
+
+@tool("project_ask",
+      "Ask the consultant AI (Claude, or Gemini) when a build step failed or you're unsure. It "
+      "returns the fix and updates the checklist. question: what you think went wrong, or what "
+      "you want to know.",
+      {"type": "object", "properties": {"question": {"type": "string"}}})
+@errors_as_words
+async def project_ask(args):
+    return _say(await builder.project_ask(args.get("question", "")))
+
+
+@tool("project_status", "Show the current build's checklist: what's done and what's left.", _EMPTY)
+@errors_as_words
+async def project_status(args):
+    return _say(await builder.project_status())
+
+
+@tool("github_publish",
+      "Publish a folder to Dr Wolf's GitHub: safety scan for keys and personal files, a README if "
+      "there isn't a proper one, his ALLOW, then push (never a force-push). Use it whenever he asks "
+      "to push or upload code to GitHub; never use git commands for this yourself. folder: the "
+      "folder's path; repo: the repo name (or owner/name); private: true for a private repo.",
+      {"type": "object", "properties": {"folder": {"type": "string"}, "repo": {"type": "string"},
+                                        "private": {"type": "boolean"}, "message": {"type": "string"}},
+       "required": ["folder", "repo"]})
+@errors_as_words
+async def github_publish(args):
+    return _say(await builder.github_publish(args.get("folder", ""), args.get("repo", ""),
+                                             bool(args.get("private")), args.get("message", "")))
+
+
 ALL = [look_at_screen, read_screen_text, look_through_camera, click_text, click_at, type_text,
-       press_keys, scroll, open_app, open_url, list_windows, focus_window]
+       press_keys, scroll, open_app, open_url, list_windows, focus_window, switch_brain,
+       start_lessons, project_start, project_next, project_ask, project_status,
+       github_publish]
 SERVER_NAME = "pc"
 TOOL_NAMES = [f"mcp__{SERVER_NAME}__{t.name}" for t in ALL]
 

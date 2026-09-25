@@ -1,8 +1,8 @@
 @echo off
-rem Jarvis Assistant: the only file you need to click.
+rem Jarvis-Max: the only file you need to click.
 rem First start sets everything up by itself (a few minutes). Later starts take seconds.
 setlocal
-title Jarvis Assistant
+title Jarvis-Max
 cd /d "%~dp0app"
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
@@ -49,21 +49,21 @@ goto end
 :no_uv
 echo.
 echo   Couldn't install uv (no internet?). Connect to the internet and click
-echo   Start-Jarvis-Assistant.bat again.
+echo   Start-Jarvis-Max.bat again.
 pause
 goto end
 
 :sync_failed
 echo.
 echo   Downloading Jarvis's parts failed. Check the internet connection and
-echo   click Start-Jarvis-Assistant.bat again. It carries on where it stopped.
+echo   click Start-Jarvis-Max.bat again. It carries on where it stopped.
 pause
 goto end
 
 :crashed
 echo.
 echo   Jarvis stopped with an error. The message is above, and also in
-echo   logs\jarvis.log inside the Jarvis-Assistant folder.
+echo   logs\jarvis.log inside the Jarvis-Max folder.
 pause
 
 :end
