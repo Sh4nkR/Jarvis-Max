@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Living Face</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#03060c;overflow:hidden}
+  canvas#stage{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+  #hud{position:fixed;left:14px;top:70px;width:190px;font:600 11px 'Segoe UI',system-ui,sans-serif;color:#9fb3c8;
+       letter-spacing:.08em;cursor:pointer;opacity:.85;z-index:5;user-select:none}
+  #hud .row{display:flex;align-items:center;gap:6px;margin:5px 0}
+  #hud .lab{width:58px;opacity:.75}
+  #hud .bar{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+  #hud .bar i{display:block;height:100%;border-radius:3px;transition:width .8s}
+  #hud .lvl{font-size:20px;font-weight:700;letter-spacing:.05em;color:#e8f0ff}
+  #hud .sub{opacity:.7;font-size:10px}
+  #step{position:fixed;left:0;right:0;top:32px;text-align:center;font:600 11px 'Segoe UI',system-ui,sans-serif;letter-spacing:.3em;
+        color:#9fb3c8;opacity:.75;pointer-events:none}
+  #journal{position:fixed;left:14px;top:70px;bottom:200px;width:min(440px,92vw);overflow:auto;display:none;z-index:6;
+           background:rgba(3,8,14,.92);border:1px solid rgba(120,160,220,.25);border-radius:8px;padding:12px 14px;
+           font:12px/1.5 'Segoe UI',system-ui,sans-serif;color:#c9d6e6}
+  #journal h3{font-size:12px;letter-spacing:.3em;color:#8fb4ff;margin-bottom:8px}
+  #journal .ev{border-left:2px solid rgba(120,160,220,.35);padding-left:8px;margin:6px 0}
+  #journal .ev b{color:#e6edf3} #journal .bad{border-color:#f85149} #journal .ok{border-color:#3fb950}
+  #hud:empty{display:none!important}
+  /* portrait (phone): a full counter card in the gap between the dock panel and the face */
+  body.portrait #hud{left:3vw;right:3vw;top:19vh;width:auto;z-index:3000;display:block;font-size:2.6vw;letter-spacing:.06em;
+       background:rgba(3,8,14,.55);border:1px solid rgba(120,160,220,.22);border-radius:12px;padding:1.6vw 2.4vw;opacity:.95}
+  body.portrait #hud .top{display:flex;align-items:center;gap:2.4vw}
+  body.portrait #hud .lvl{font-size:5vw;white-space:nowrap}
+  body.portrait #hud .m{display:flex;flex-direction:column;align-items:stretch;gap:.8vw;flex:1;min-width:0}
+  body.portrait #hud .m .bar{display:block;width:100%;height:1.2vw;flex:none}
+  body.portrait #hud .tag{opacity:.75;white-space:nowrap}
+  body.portrait #hud .tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:1.6vw;margin-top:2vw}
+  body.portrait #hud .t{text-align:center;border:1px solid rgba(120,160,220,.15);border-radius:8px;padding:1.2vw 0;background:rgba(255,255,255,.03)}
+  body.portrait #hud .t b{display:block;font-size:5.4vw;line-height:1.1;color:#e8f0ff}
+  body.portrait #hud .t span{font-size:2.2vw;opacity:.7}
+  body.portrait #hud .t.bad b{color:#f85149} body.portrait #hud .t.fire b{color:#e3b341}
+  /* phone: one slim strip at the very top, above every dock button */
+  @media (max-width:760px){
+    #hud{left:8px;right:8px;top:4px;width:auto;z-index:3000;display:flex;align-items:center;gap:8px;font-size:9px;
+         background:rgba(3,8,14,.75);border:1px solid rgba(120,160,220,.2);border-radius:14px;padding:3px 10px}
+    #hud .lvl{font-size:13px} #hud .m{display:flex;align-items:center;gap:3px;flex:1;min-width:0}
+    #hud .m .bar{height:4px} #hud .tag{opacity:.75;white-space:nowrap}
+    #word{top:32px!important;font-size:10px!important} #step{top:47px!important;font-size:9px!important;letter-spacing:.15em!important}
+    #journal{top:30px;bottom:auto;max-height:60vh;z-index:3001;left:8px;width:auto;right:8px}
+  }
+  #word{position:fixed;left:0;right:0;top:12px;text-align:center;font:600 12px 'Segoe UI',system-ui,sans-serif;
+        letter-spacing:.45em;color:#8aa0b8;opacity:.7;pointer-events:none;transition:color .8s}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="word">IDLE</div>
+<div id="step"></div>
+<div id="hud" title="Tap: Jarvis's journal"></div>
+<div id="journal"></div>
+<script src="../../core.js"></script>
+<script>
+"use strict";
+/* THE LIVING FACE — full package (TANTRA-05, all phases).
+   A faint neon/smoke holographic face. Props around it show WHAT Jarvis is doing; 96 expressions show
+   HOW he feels (driven by state, job, outcome, the words of his reply and of your message).
+   Sound: soft FX only (never the real-world sound of the job), all under 0.4 s.
+   Test hooks: ?shot=<state>&prop=<name>&mode=allow|error|offline&expr=<name> */
+AV.init({ sound: false });
+const Q = new URLSearchParams(location.search);
+const MOBILE = /Android|iPhone|Mobi/i.test(navigator.userAgent) || innerWidth < 700;
+const BLUR = MOBILE ? .35 : 1;
+const cv = document.getElementById("stage"), g = cv.getContext("2d"), word = document.getElementById("word");
+let W = 0, H = 0;
+function size() { const d = Math.min(MOBILE ? 1.5 : 2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  cv.width = W * d; cv.height = H * d; g.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener("resize", size); size();
+const lerp = (a, b, k) => a + (b - a) * k, clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rgba = (c, a) => `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+const rnd = a => a[(Math.random() * a.length) | 0];
+
+/* =============== FACE CONTROLS =============== */
+const KEYS = ["smile","open","browL","browR","inner","knit","lidL","lidR","pupil","turn","tilt","nod","tongue","pucker","cheek","scrunch","smirk","cross"];
+const NEUTRAL = {smile:.1,open:0,browL:0,browR:0,inner:0,knit:0,lidL:1,lidR:1,pupil:.5,turn:0,tilt:0,nod:0,tongue:0,pucker:0,cheek:0,scrunch:0,smirk:0,cross:0};
+/* 96 expressions in 17 families (TANTRA-05 §3). extra: hand = ghost-hand gesture, fx = overlay */
+const EX = {
+ // 1 calm & neutral
+ neutral:{}, calm:{smile:.15,lidL:.85,lidR:.85}, serene:{smile:.25,lidL:.6,lidR:.6}, attentive:{browL:.3,browR:.3,pupil:.6,tilt:.12},
+ thoughtful:{smile:0,browL:.25,browR:-.1,knit:.2,turn:-.15,lidL:.8,lidR:.8,hand:"chin"}, pensive:{smile:-.1,inner:.3,lidL:.7,lidR:.7,nod:.15},
+ contemplative:{smile:0,lidL:.65,lidR:.65,turn:-.2,tilt:-.08}, deadpan:{smile:0,lidL:.7,lidR:.7},
+ // 2 focus & effort
+ focused:{smile:0,knit:.6,lidL:.7,lidR:.7,pupil:.3,nod:.1}, ultra:{smile:0,knit:.9,lidL:.55,lidR:.55,pupil:.2,nod:.2,tongue:.4},
+ determined:{smile:-.1,knit:.7,lidL:.75,lidR:.75,nod:.05}, concentrating:{knit:.5,lidL:.65,lidR:.65,tongue:.6,smirk:.3},
+ straining:{knit:1,lidL:.4,lidR:.4,smile:-.3,cheek:.3}, calculating:{knit:.4,lidL:.7,lidR:.7,turn:.15,pupil:.3},
+ scrutinising:{knit:.6,lidL:.5,lidR:.8,pupil:.25,nod:.1}, vigilant:{browL:.2,browR:.2,pupil:.4,lidL:1.05,lidR:1.05},
+ // 3 joy & warmth
+ happy:{smile:.8,cheek:.4,lidL:.85,lidR:.85}, joyful:{smile:1,open:.35,cheek:.7,lidL:.6,lidR:.6,browL:.2,browR:.2},
+ delighted:{smile:1,open:.3,browL:.4,browR:.4,cheek:.6}, elated:{smile:1,open:.55,browL:.6,browR:.6,cheek:.8,fx:"sparkle"},
+ amused:{smile:.6,smirk:.3,lidL:.8,lidR:.75}, laughing:{smile:1,open:.7,lidL:.3,lidR:.3,cheek:1,nod:-.1},
+ giggling:{smile:.9,open:.25,lidL:.4,lidR:.4,cheek:.8,tilt:.12}, grinning:{smile:1,open:.12,cheek:.6},
+ content:{smile:.45,lidL:.75,lidR:.75}, pleased:{smile:.55,cheek:.3}, grateful:{smile:.5,inner:.3,lidL:.7,lidR:.7,nod:.15},
+ affectionate:{smile:.6,lidL:.6,lidR:.6,tilt:.15,fx:"hearts"},
+ // 4 pride & power
+ proud:{smile:.55,tilt:-.1,nod:-.12,lidL:.75,lidR:.75,browL:.15,browR:.15}, confident:{smile:.4,smirk:.25,nod:-.08,lidL:.8,lidR:.8},
+ triumphant:{smile:1,open:.5,browL:.5,browR:.5,cheek:.6,fx:"confetti"}, smug:{smile:.4,smirk:.6,lidL:.6,lidR:.6,nod:-.1},
+ cocky:{smile:.5,smirk:.7,browR:.4,nod:-.12}, regal:{smile:.2,smirk:.4,lidL:.6,lidR:.6,nod:-.2},
+ victorious:{smile:1,open:.4,browL:.4,browR:.4,hand:"fist",fx:"confetti"}, selfsatisfied:{smile:.5,lidL:.45,lidR:.45,smirk:.3},
+ // 5 pleasure & ease
+ pleasure:{smile:.6,lidL:.2,lidR:.2,cheek:.4}, relieved:{smile:.4,pucker:.6,cheek:.8,browL:.3,browR:.3,lidL:1.1,lidR:1.1},
+ relaxed:{smile:.35,lidL:.55,lidR:.55}, blissful:{smile:.75,lidL:.1,lidR:.1,tilt:.12}, dreamy:{smile:.35,lidL:.45,lidR:.45,turn:.2,fx:"clouds"},
+ cosy:{smile:.5,lidL:.5,lidR:.5,nod:.12}, savouring:{smile:.6,lidL:.15,lidR:.15,tongue:.3}, sigh:{pucker:.5,lidL:.5,lidR:.5,smile:.2},
+ // 6 love & charm
+ loving:{smile:.6,lidL:.55,lidR:.55,fx:"hearts"}, tender:{smile:.4,inner:.3,lidL:.65,lidR:.65,tilt:.1}, admiring:{smile:.5,browL:.4,browR:.4,pupil:.8},
+ coy:{smile:.35,turn:.3,lidL:.6,lidR:.6,nod:.15}, shy:{smile:.25,turn:.35,nod:.25,lidL:.5,lidR:.5}, flirt:{smile:.5,smirk:.4,lidL:.5,browR:.4},
+ kiss:{pucker:1,lidL:.3,lidR:.3,fx:"hearts"},
+ // 7 play & mischief
+ playful:{smile:.7,smirk:.5,browR:.4,tilt:.1}, cheeky:{smile:.6,tongue:.8,open:.25,lidL:.8,lidR:.6}, naughty:{smirk:.8,smile:.4,browR:.6,lidL:.6,lidR:.75},
+ mischievous:{smirk:.7,smile:.5,knit:.3,lidL:.6,lidR:.6}, teasing:{smile:.6,tongue:.5,tilt:.15}, wink:{smile:.7,smirk:.4,lidL:0,cheek:.4},
+ tongue:{tongue:1,open:.3,smile:.4,lidL:.7,lidR:.7}, licklips:{tongue:.7,smile:.4,smirk:.4}, bitelip:{smirk:.6,smile:.2,lidL:.6,lidR:.6,tongue:.2,open:.05},
+ silly:{cross:1,tongue:.9,open:.3,smile:.5},
+ // 8 surprise
+ surprised:{open:.6,browL:.8,browR:.8,lidL:1.25,lidR:1.25,pupil:.8,smile:0}, astonished:{open:.9,pucker:.5,browL:1,browR:1,lidL:1.35,lidR:1.35,pupil:.9,smile:-.1},
+ amazed:{open:.7,pucker:.3,browL:.9,browR:.9,lidL:1.3,lidR:1.3,smile:.2}, awed:{open:.4,browL:.7,browR:.7,lidL:1.2,lidR:1.2,pupil:.9,fx:"sparkle"},
+ startled:{open:.5,browL:.9,browR:.9,inner:.4,lidL:1.3,lidR:1.3,pupil:.95,smile:-.2,nod:-.1}, shocked:{open:.8,browL:1,browR:1,lidL:1.4,lidR:1.4,pupil:.3,smile:-.3},
+ stunned:{open:.5,lidL:1.3,lidR:1.3,pupil:.2,smile:0}, impressed:{smile:.3,pucker:.4,browL:.6,browR:.6},
+ // 9 curiosity & doubt
+ curious:{browR:.6,browL:.1,tilt:.15,pupil:.65,smile:.15}, interested:{browL:.35,browR:.35,pupil:.7,nod:-.05}, intrigued:{browR:.7,smirk:.3,pupil:.7},
+ puzzled:{browR:.7,browL:-.2,knit:.3,tilt:.2,smirk:-.4,smile:-.1,hand:"scratch"}, confused:{browR:.5,browL:-.3,inner:.4,tilt:-.2,open:.1},
+ uncertain:{inner:.4,smile:-.1,smirk:-.3,turn:.1}, sceptical:{browR:.6,browL:-.3,lidL:.6,lidR:.75,smirk:-.3},
+ suspicious:{lidL:.5,lidR:.5,turn:.25,smirk:-.3,knit:.3}, hesitant:{inner:.5,smile:-.05,nod:.15,turn:.15},
+ // 10 ideas
+ inspired:{browL:.6,browR:.6,smile:.5,pupil:.8,fx:"sparkle"}, eureka:{browL:1,browR:1,open:.4,smile:.6,pupil:.9,lidL:1.2,lidR:1.2,fx:"bulb"},
+ scheming:{smirk:.6,smile:.3,lidL:.5,lidR:.5,knit:.3,hand:"tent"}, realising:{browL:.5,browR:.5,open:.25,nod:.1},
+ // 11 sadness
+ sad:{smile:-.6,inner:.7,lidL:.7,lidR:.7,nod:.2}, disappointed:{smile:-.4,inner:.4,lidL:.6,lidR:.6,nod:.25},
+ gloomy:{smile:-.5,lidL:.5,lidR:.5,nod:.3,fx:"rain"}, melancholy:{smile:-.3,inner:.5,lidL:.6,lidR:.6,turn:-.2},
+ hurt:{smile:-.5,inner:.9,lidL:.8,lidR:.8}, lonely:{smile:-.3,inner:.5,turn:.3,nod:.2}, tearful:{smile:-.5,inner:.9,lidL:.8,lidR:.8,fx:"tear"},
+ defeated:{smile:-.6,lidL:.4,lidR:.4,nod:.5}, low:{smile:-.7,inner:.6,lidL:.45,lidR:.45,nod:.45,pupil:.4},
+ // 12 fear & worry
+ fear:{open:.4,inner:1,browL:.6,browR:.6,lidL:1.3,lidR:1.3,pupil:.3,smile:-.4}, anxious:{inner:.7,smile:-.3,pupil:.35,lidL:1.1,lidR:1.1},
+ worried:{inner:.8,smile:-.25,lidL:.95,lidR:.95,knit:.2}, nervous:{inner:.6,smile:-.1,smirk:-.4,pupil:.4},
+ alarmed:{browL:.9,browR:.9,lidL:1.3,lidR:1.3,open:.3,pupil:.3}, panicked:{inner:1,browL:1,browR:1,open:.7,lidL:1.4,lidR:1.4,pupil:.2},
+ uneasy:{inner:.4,smirk:-.3,lidL:.85,lidR:.85,turn:.15}, dread:{inner:.9,smile:-.5,lidL:1.1,lidR:1.1,nod:.15,pupil:.25},
+ // 13 disgust & dislike
+ disgust:{scrunch:1,smile:-.5,smirk:-.5,lidL:.6,lidR:.6,knit:.5,turn:.15}, revolted:{scrunch:1,smile:-.7,open:.2,lidL:.5,lidR:.5,turn:.3},
+ distaste:{scrunch:.5,smile:-.3,smirk:-.3}, contempt:{smirk:.6,smile:-.1,lidL:.6,lidR:.6,nod:-.15,turn:-.1},
+ disdain:{nod:-.25,lidL:.5,lidR:.5,smirk:.3,smile:-.2}, bored:{lidL:.45,lidR:.45,smile:-.1,tilt:-.15},
+ // 14 anger
+ annoyed:{knit:.6,smile:-.3,lidL:.7,lidR:.7}, irritated:{knit:.7,smirk:-.3,lidL:.65,lidR:.65}, frustrated:{knit:.8,smile:-.4,cheek:.4,pucker:.3},
+ angry:{knit:1,browL:-.6,browR:-.6,smile:-.6,scrunch:.4,pupil:.3,lidL:.8,lidR:.8}, furious:{knit:1,browL:-.8,browR:-.8,smile:-.8,open:.3,scrunch:.6,pupil:.2},
+ indignant:{knit:.6,browL:.2,browR:.2,smile:-.4,nod:-.15}, grumpy:{knit:.5,smile:-.5,lidL:.6,lidR:.6,nod:.1}, stern:{knit:.6,smile:-.2,lidL:.8,lidR:.8},
+ // 15 sass & attitude
+ sarcastic:{browR:.75,browL:-.2,lidL:.55,lidR:.6,smirk:.5,smile:.2}, eyeroll:{lidL:.6,lidR:.6,smirk:.3,look:"up"},
+ unimpressed:{lidL:.55,lidR:.55,smile:-.15,smirk:-.2}, really:{tilt:.2,smile:0,lidL:.65,lidR:.65,browR:.4},
+ facepalm:{lidL:.2,lidR:.2,smile:-.3,nod:.2,hand:"palm"}, shrug:{smile:-.1,browL:.5,browR:.5,smirk:.3,hand:"shrug"}, sideeye:{lidL:.6,lidR:.6,smirk:-.2,look:"side"},
+ // 16 effort aftermath
+ exasperated:{pucker:1,cheek:1,browL:.5,browR:.5,lidL:1.2,lidR:1.2}, exhausted:{lidL:.35,lidR:.35,open:.2,smile:-.2,nod:.3},
+ phew:{pucker:.7,cheek:.7,smile:.3,hand:"brow"}, sheepish:{smile:.2,smirk:-.3,inner:.5,turn:.2,nod:.2,lidL:.75,lidR:.75}, apologetic:{inner:.6,smile:-.05,nod:.2,lidL:.7,lidR:.7},
+ // 17 sleep & idle
+ sleepy:{lidL:.3,lidR:.3,smile:.05,nod:.25,open:.05}, yawning:{open:1,lidL:.2,lidR:.2,browL:.3,browR:.3}, dozing:{lidL:0,lidR:0,nod:.35,open:.12,fx:"zzz"},
+ daydreaming:{lidL:.6,lidR:.6,smile:.3,turn:.25,fx:"clouds"}, waking:{lidL:.8,lidR:.8,open:.3,browL:.4,browR:.4},
+ // helpers
+ polite:{smile:.3,browL:.35,browR:.35,pupil:.6},
+};
+const ctl = Object.assign({}, NEUTRAL), target = Object.assign({}, NEUTRAL);
+let exprName = "neutral", exprHand = null, exprFx = null, exprLook = null, recent = [];
+function setExpr(n) { if (!EX[n]) n = "calm"; exprName = n; const e = EX[n];
+  Object.assign(target, NEUTRAL); for (const k of KEYS) if (k in e) target[k] = e[k];
+  exprHand = e.hand || null; exprFx = e.fx || null; exprLook = e.look || null; recent.push(n); if (recent.length > 3) recent.shift(); }
+
+/* =============== WHAT JARVIS IS DOING =============== */
+const $ = id => document.getElementById(id);
+const JV = () => window.JV_FACE || { reply: () => "", offline: () => false, camera: () => false };
+const allowShown = () => !!($("jv-perm") && $("jv-perm").classList.contains("show"));
+const errorShown = () => { const e = $("jv-toast"); return !!(e && e.classList.contains("show") && !e.classList.contains("ok")); };
+const toolText = () => ($("jv-tool") ? $("jv-tool").textContent || "" : "").toLowerCase();
+const youText = () => ($("jv-you") ? $("jv-you").textContent || "" : "");
+/* tool text -> prop (TANTRA-05 §4, §8) */
+function propFor(t) {
+  if (!t || !t.startsWith("▸")) return null;
+  const R = [
+    [/call .*from your phone|phone_call/, "phone"], [/phone_type|whatsapp|message|sms|send .*text|telegram|instagram/, "dancers"],
+    [/phone/, "phone"], [/project_ask|consult|ask the consultant|gemini|other ai/, "consult"],
+    [/research|multi search|smart search/, "monocle"], [/search the web|search inside|look through files/, "magnifier"],
+    [/youtube|netflix|video|movie/, "cinema"], [/spotify|music|song|gaana|wynk/, "disco"],
+    [/run_self_test|self.?test|self.?check/, "stethoscope"], [/start_lessons|lesson/, "book"],
+    [/notes\/|daily\/|add_to_note|remember/, "quill"], [/samasa/, "seal"], [/switch brain|switch_brain/, "mask"], [/switch_voice|voice/, "ink"],
+    [/inbox\/|read .*\.(pdf|png|jpg|txt)/, "doc"], [/project_create|change the file|write .*\.(py|js|java|html)|code/, "code"],
+    [/build|run a command|publish|project|github|install|apk/, "gears"],
+    [/type "|typing/, "laptop"], [/click|press|scroll|buttons|look closer|focus window|open app|open_app/, "hands"],
+    [/open http|read the page|open www|browse/, "globe"], [/look at the screen|read the screen/, "frame"], [/camera/, "iris"],
+  ];
+  for (const [re, p] of R) if (re.test(t)) return p;
+  return "hands";
+}
+/* where each prop sits (face units: face is ~1.2 wide, ~2 tall, centre 0,0) */
+const STATION = { ear:[-1.35,-.05], hands:[0,.3], laptop:[0,1.25], globe:[1.35,-.55], magnifier:[.28,-.1], gears:[1.35,.35], phone:[-1.35,.6],
+  bulb:[0,-1.45], palm:[0,1.15], skull:[0,-1.4], consult:[.45,.5], monocle:[.28,-.1], code:[0,.55], dancers:[1.35,.2], cinema:[-1.45,-.4],
+  disco:[1.3,-.85], stethoscope:[0,.95], book:[-1.35,.45], quill:[1.3,.5], seal:[0,-1.2], mask:[0,-.1], ink:[0,0], doc:[-1.35,-.2],
+  frame:[1.35,-.15], iris:[1.45,-1.0], plug:[0,1.3] };
+/* expression for each job (props) */
+const PROP_EXPR = { hands:"focused", laptop:"concentrating", globe:"curious", magnifier:"scrutinising", gears:"determined", phone:"happy",
+  consult:"confident", monocle:"contemplative", code:"ultra", dancers:"playful", cinema:"relaxed", disco:"joyful", stethoscope:"serene",
+  book:"interested", quill:"content", seal:"wink", mask:"surprised", ink:"regal", doc:"interested", frame:"attentive", iris:"curious" };
+
+/* =============== SOUND: soft FX only =============== */
+let AC = null;
+function ac() { if (!AC) try { AC = new AudioContext(); } catch (e) {} if (AC && AC.state === "suspended") AC.resume(); return AC; }
+addEventListener("pointerdown", ac, { once: true });
+function tone(f, d, v, type = "sine", delay = 0) { const a = ac(); if (!a || Q.get("shot")) return;
+  const t0 = a.currentTime + delay, o = a.createOscillator(), gn = a.createGain(); o.type = type; o.frequency.value = f;
+  gn.gain.setValueAtTime(0, t0); gn.gain.linearRampToValueAtTime(v, t0 + .012); gn.gain.exponentialRampToValueAtTime(.0001, t0 + d);
+  o.connect(gn).connect(a.destination); o.start(t0); o.stop(t0 + d + .05); }
+function shimmer(base, v = .02, n = 3, gap = .045) { for (let i = 0; i < n; i++) tone(base * Math.pow(1.335, i), .3, v, "sine", i * gap); }
+function swoosh(from, to, d = .35, v = .025) { const a = ac(); if (!a || Q.get("shot")) return;
+  const t0 = a.currentTime, o = a.createOscillator(), gn = a.createGain(); o.type = "sine";
+  o.frequency.setValueAtTime(from, t0); o.frequency.exponentialRampToValueAtTime(to, t0 + d);
+  gn.gain.setValueAtTime(0, t0); gn.gain.linearRampToValueAtTime(v, t0 + .05); gn.gain.exponentialRampToValueAtTime(.0001, t0 + d);
+  o.connect(gn).connect(a.destination); o.start(t0); o.stop(t0 + d + .05); }
+const SND = {
+  bell: () => shimmer(392, .02, 2, .06), ting: () => shimmer(880, .018, 4, .035), xray: () => swoosh(200, 420, .35, .018),
+  done: () => { tone(660,.3,.025); tone(880,.4,.025,"sine",.12); }, allow: () => tone(523,.4,.03), err: () => swoosh(330,150,.4,.035),
+  prop: { hands:()=>swoosh(300,520,.25,.018), laptop:()=>shimmer(620,.014,2,.05), globe:()=>swoosh(260,600,.3,.018), magnifier:()=>shimmer(740,.014,2,.04),
+    gears:()=>swoosh(180,300,.3,.02), phone:()=>shimmer(560,.016,3,.05), consult:()=>swoosh(240,180,.35,.02), monocle:()=>shimmer(500,.014,2,.06),
+    code:()=>shimmer(990,.012,3,.03), dancers:()=>shimmer(660,.016,4,.05), cinema:()=>swoosh(400,250,.35,.018), disco:()=>shimmer(523,.016,4,.04),
+    stethoscope:()=>tone(330,.3,.025), book:()=>swoosh(500,700,.2,.015), quill:()=>shimmer(1180,.01,2,.04), seal:()=>tone(220,.3,.035),
+    mask:()=>swoosh(300,800,.3,.02), ink:()=>swoosh(600,200,.35,.02), doc:()=>swoosh(350,520,.25,.015), frame:()=>shimmer(700,.012,2,.05), iris:()=>shimmer(800,.012,2,.05) },
+};
+
+/* =============== particles: smoke, letters, notes, confetti, hearts =============== */
+const smoke = [], parts = [];
+function puff(x, y, col, n = 2) { for (let i = 0; i < n; i++) smoke.push({ x: x + (Math.random() - .5) * 20, y, vx: (Math.random() - .5) * 12,
+  vy: -14 - Math.random() * 18, r: 6 + Math.random() * 10, life: 1, c: col }); }
+function part(x, y, kind, c, vx, vy, life = 1.6, ch = "") { parts.push({ x, y, kind, c, vx, vy, life, max: life, ch, rot: Math.random() * 6 }); }
+
+/* =============== STATE MACHINE + MOOD ENGINE =============== */
+let t = 0, mode = "idle", prop = null, propT = 0, pending = null, lastTool = "", lastMode = "idle", idleSince = performance.now(),
+    errUntil = 0, bulbUntil = 0, doneUntil = 0, blinkAt = 2, blinkV = 1, nextMicro = 8, gaze = [0, 0], gazeT = [0, 0],
+    idleMicro = "calm", idleMicroUntil = 0, moodWord = null, moodUntil = 0, yawnUntil = 0, lastYou = "";
+const COL = { idle:[80,130,255], listening:[40,230,200], thinking:[160,110,255], speaking:[255,205,140], allow:[255,180,70],
+  error:[240,60,70], work:[90,240,140], offline:[90,90,110] };
+const PROP_COL = { phone:[255,150,70], dancers:[255,90,140], consult:[200,200,215], monocle:[230,170,90], cinema:[180,110,255], disco:[255,120,220],
+  stethoscope:[120,230,255], book:[255,220,140], quill:[200,180,255], seal:[255,140,60], mask:[255,255,255], ink:[255,80,80], code:[90,255,150] };
+let col = [80,130,255];
+
+/* mood from words (his reply / your message) — simple and fast */
+function moodFromReply(r) {
+  r = r.toLowerCase().slice(-400);
+  if (!r) return null;
+  if (/sorry|apolog|my mistake|i couldn'?t|failed|unable/.test(r)) return rnd(["apologetic","sheepish","disappointed"]);
+  if (/haha|ha ha|funny|joke|lol/.test(r)) return rnd(["laughing","amused","giggling"]);
+  if (/danger|careful|warning|risk|scam|fraud/.test(r)) return rnd(["worried","alarmed","suspicious"]);
+  if (/disgust|gross|spam/.test(r)) return "distaste";
+  if (/done|success|built|published|confirmed|it works|passed/.test(r)) return rnd(["proud","triumphant","pleased","confident"]);
+  if (/great|wonderful|excellent|brilliant|love/.test(r)) return rnd(["delighted","happy","admiring"]);
+  if (/interesting|curious|fascinat/.test(r)) return rnd(["intrigued","interested"]);
+  if (/hmm|perhaps|maybe|not sure|it depends/.test(r)) return rnd(["thoughtful","uncertain","pensive"]);
+  if (/\?\s*$/.test(r.trim())) return rnd(["curious","attentive"]);
+  if (/sir/.test(r)) return rnd(["polite","confident","content","calm"]);
+  return null;
+}
+function moodFromYou(y) {
+  y = y.replace(/^you:\s*/i, ""); const low = y.toLowerCase();
+  if (/haha|lol|😂|🤣/.test(low)) return "amused";
+  if (/damn|shit|wtf|stupid|useless|f\*|fuck/.test(low)) return rnd(["sheepish","worried","apologetic"]);
+  if (/thank|thanks|good job|well done|great|love you|bravo/.test(low)) return rnd(["grateful","affectionate","proud","coy"]);
+  if (/urgent|quick|now!|asap|emergency/.test(low) || (y.length > 6 && y === y.toUpperCase())) return "alarmed";
+  if (/kiss|😘/.test(low)) return "kiss";
+  if (/wink|😉/.test(low)) return "wink";
+  return null;
+}
+
+const ACT2PROP = { look:"frame", browse:"globe", hands:"hands", typing:"laptop", search:"magnifier", research:"monocle", build:"gears",
+  code:"code", consult:"consult", call:"phone", message:"dancers", phone:"phone", selfcheck:"stethoscope", lessons:"book", notes:"quill",
+  reading:"doc", samasa:"seal", brain:"mask", voice:"ink", camera:"iris", think:null, talk:null, idle:null };
+let lastLevel = null, levelUpUntil = 0, lastIdeaT = 0, lastBrain = "", thirdEye = 0, eyeDart = [0, 0], eyeDartAt = 0;
+function decide(now) {
+  let m = AV.state;
+  const tt = toolText();
+  if (tt && tt !== lastTool && tt.startsWith("▸")) {
+    const np = propFor(tt);
+    if (np !== prop) { if (prop && now - propT < 1500) pending = np; else { if (SND.prop[np]) SND.prop[np](); prop = np; propT = now; } }
+    else propT = now;
+  }
+  lastTool = tt;
+  if (pending && now - propT >= 1500) { if (SND.prop[pending]) SND.prop[pending](); prop = pending; pending = null; propT = now; }
+  if (Q.get("prop")) { prop = Q.get("prop"); propT = now; }
+  if (prop && now - propT > 6000 && !Q.get("prop")) prop = null;
+  if (errorShown() && errUntil < now - 4000) { errUntil = now + 2600; SND.err(); }
+  if (now < errUntil) m = "error";
+  if (allowShown()) m = "allow";
+  if (JV().offline()) m = "offline";
+  if (Q.get("mode")) m = Q.get("mode");
+  const y = youText(); if (y && y !== lastYou) { lastYou = y; const mw = moodFromYou(y); if (mw) { moodWord = mw; moodUntil = now + 3500; } }
+  if (m !== lastMode) {
+    if (m === "listening") SND.bell();
+    if (m === "thinking") SND.xray();
+    if (m === "allow") SND.allow();
+    if (lastMode === "speaking" && m === "idle") { doneUntil = now + 2400; SND.done();
+      const p = P(0, -.2); for (let i = 0; i < 26; i++) part(p[0], p[1], "confetti", [255, 180 + Math.random() * 75, 80 + Math.random() * 150], (Math.random() - .5) * 260, -120 - Math.random() * 160, 1.6); }
+    if (m === "idle") idleSince = now;
+    if (m === "speaking") { const mw = moodFromReply(JV().reply()); if (mw) { moodWord = mw; moodUntil = now + 4000; } }
+    lastMode = m;
+  }
+  mode = m;
+  /* pick the expression (priority: error > allow > offline > your mood > job > state > idle life) */
+  let e = "calm";
+  if (m === "error") e = now < errUntil - 1500 ? rnd(["startled","shocked"]) === "shocked" && Math.random() < .5 ? "shocked" : "startled" : rnd(["sheepish","low","apologetic"]);
+  else if (m === "allow") e = "polite";
+  else if (m === "offline") e = "sleepy";
+  else if (now < moodUntil && moodWord) e = moodWord;
+  else if (m === "listening") e = rnd(["attentive","interested"]) && "attentive";
+  else if (m === "thinking") e = prop ? (PROP_EXPR[prop] || "focused") : "thoughtful";
+  else if (m === "speaking") { if (now < bulbUntil) e = "eureka"; else { const mw = moodFromReply(JV().reply()); e = mw || (AV.env > .6 ? "joyful" : "happy"); } }
+  else if (now < doneUntil) e = now < doneUntil - 1300 ? "exasperated" : rnd(["proud","relieved","phew"]);
+  else {
+    const idleMin = (now - idleSince) / 60000;
+    if (idleMin > 10) e = "dozing";
+    else if (idleMin > 5) { e = "sleepy"; if (Math.random() < .002) yawnUntil = t + 2.2; if (t < yawnUntil) e = "yawning"; }
+    else { if (t > nextMicro) { nextMicro = t + 8 + Math.random() * 9;
+        const pool = ["calm","serene","curious","amused","relaxed","thoughtful","playful","confident","wink","coy","pleasure","sceptical",
+          "proud","content","daydreaming","dreamy","bored","cheeky","tongue","silly","sideeye","eyeroll","smug","grinning","licklips","bitelip","kiss","shrug","really","naughty"];
+        do { idleMicro = rnd(pool); } while (recent.includes(idleMicro)); idleMicroUntil = t + 2.5; }
+      e = t < idleMicroUntil ? idleMicro : "calm"; }
+  }
+  /* THE BEHAVIOUR LAYER WINS: real facts from the server (TANTRA-06) override every guess above */
+  const B = window.JV_BEHAVE;
+  if (B && !Q.get("shot")) {
+    const age = Date.now() / 1000 - B.t, endish = ["done","failed","lessons_done","allowed","denied","recovered"].includes(B.phase);
+    if (age < (endish ? 4 : 15) && (endish || m !== "idle")) {
+      const np = ACT2PROP[B.activity];
+      if (np && !endish && np !== prop) { if (SND.prop[np]) SND.prop[np](); prop = np; propT = now; } else if (np) propT = now;
+      if (m !== "allow" && m !== "error" && B.mood && EX[B.mood]) e = B.mood;
+    }
+    /* EUREKA is earned: only when a failed step was really solved */
+    if (B.phase === "recovered" && B.t !== lastIdeaT) { lastIdeaT = B.t; bulbUntil = now + 1800; SND.ting(); }
+    if (B.brain) lastBrain = String(B.brain).toLowerCase();
+    if (B.level_up && B.level_up !== lastLevel) { lastLevel = B.level_up; levelUpUntil = now + 3800; SND.ting();
+      const p = P(0, -.3); for (let i = 0; i < 60; i++) part(p[0], p[1], "confetti", [255, 170 + Math.random() * 85, 60 + Math.random() * 180], (Math.random() - .5) * 360, -160 - Math.random() * 220, 2.2); }
+  }
+  {
+    const B2 = window.JV_BEHAVE, heavy = B2 && ["build","code","research","consult","selfcheck"].includes(B2.activity);
+    const serious = ["determined","ultra","straining","focused","concentrating","scrutinising","contemplative","calculating","vigilant","stern"].includes(e);
+    const deep = B2 && !["done","failed","lessons_done"].includes(B2.phase) && (Date.now() / 1000 - B2.t) < 15 && heavy && serious
+      && B2.busy_s >= (lastBrain.includes("opus") ? 25 : 60);
+    thirdEye = lerp(thirdEye, (deep || Q.get("third")) ? 1 : 0, .04);
+  }
+  if (Q.get("expr")) e = Q.get("expr");
+  if (e !== exprName) setExpr(e);
+}
+// small mood sticks a bit (no flicker): re-pick random only when the name changes above
+
+/* =============== DRAW HELPERS =============== */
+let S = 100, CX = 0, CY = 0;
+function P(x, y) { return [CX + x * S, CY + y * S]; }
+function neon(c, a, w = 2, blur = 14) { g.strokeStyle = rgba(c, a); g.lineWidth = w; g.shadowColor = rgba(c, Math.min(1, a + .3)); g.shadowBlur = blur * BLUR; }
+function line(pts, close) { g.beginPath(); pts.forEach((p, i) => { const q = P(p[0], p[1]); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); if (close) g.closePath(); g.stroke(); }
+function curve(a, c1, c2, b) { const A = P(...a), B = P(...b), C1 = P(...c1), C2 = P(...c2);
+  g.beginPath(); g.moveTo(A[0], A[1]); g.bezierCurveTo(C1[0], C1[1], C2[0], C2[1], B[0], B[1]); g.stroke(); }
+function circ(x, y, r, fill) { const p = P(x, y); g.beginPath(); g.arc(p[0], p[1], Math.max(.5, r * S), 0, 6.283); fill ? g.fill() : g.stroke(); }
+function text(s, x, y, size, c, a) { const p = P(x, y); g.fillStyle = rgba(c, a); g.font = `bold ${size * S}px 'Segoe UI',sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, p[0], p[1]); }
+
+/* =============== THE FACE =============== */
+let mouthPt = [0, .45];
+function drawFace(alpha) {
+  const c = col, k = ctl, tx = k.turn * .12;
+  g.save(); g.translate(CX, CY); g.rotate(k.tilt * .25); g.translate(-CX, -CY + k.nod * S * .12);
+  neon(c, .32 * alpha, 2.2, 22);
+  curve([-.62,-.15],[-.66,-1.0],[.66,-1.0],[.62,-.15]);
+  curve([-.62,-.15],[-.62,.55],[-.25,.95],[0,.98]); curve([.62,-.15],[.62,.55],[.25,.95],[0,.98]);
+  neon(c, .22 * alpha, 1.6, 12); curve([-.62,-.18],[-.78,-.22],[-.78,.12],[-.6,.12]); curve([.62,-.18],[.78,-.22],[.78,.12],[.6,.12]);
+  // neck
+  neon(c, .16 * alpha, 1.4, 10); line([[-.22,.9],[-.24,1.25]]); line([[.22,.9],[.24,1.25]]);
+  // brows
+  neon(c, .7 * alpha, 3, 16);
+  for (const s of [-1, 1]) {
+    const b = s < 0 ? k.browL : k.browR, by = -.33 - b * .1, inner = k.inner * .08, kn = k.knit * .05;
+    curve([tx + s*.12 + s*kn*.5, by + .02 - inner + kn], [tx + s*.2, by - .06], [tx + s*.34, by - .06], [tx + s*.44, by + .03]);
+  }
+  if (k.browL + k.browR > 1) { neon(c, .18 * alpha, 1.2, 8); for (let i = 0; i < 2; i++) curve([tx-.25,-.55-i*.06],[tx-.1,-.58-i*.06],[tx+.1,-.58-i*.06],[tx+.25,-.55-i*.06]); }
+  if (k.knit > .5 && thirdEye < .1) { neon(c, .2 * alpha, 1.2, 8); line([[tx-.03,-.3],[tx-.02,-.22]]); line([[tx+.03,-.3],[tx+.02,-.22]]); }
+  if (thirdEye > .03) {           /* AJNA: the third eye of deep, grounded focus (indigo) */
+    const o = thirdEye, ey = -.5, h = .085 * o, w = .05, IND = [120,90,255];
+    const halo2 = g.createRadialGradient(...P(tx, ey), 0, ...P(tx, ey), .22 * S);
+    halo2.addColorStop(0, rgba(IND, .25 * o)); halo2.addColorStop(1, rgba(IND, 0)); g.fillStyle = halo2; circ(tx, ey, .22, true);
+    neon(IND, .9 * o * alpha, 2.4, 22);
+    curve([tx, ey - h - .03], [tx + w * 1.6, ey - h * .5], [tx + w * 1.6, ey + h * .5], [tx, ey + h + .03]);
+    curve([tx, ey - h - .03], [tx - w * 1.6, ey - h * .5], [tx - w * 1.6, ey + h * .5], [tx, ey + h + .03]);
+    if (t > eyeDartAt) { eyeDart = [(Math.random() - .5) * .05, (Math.random() - .5) * .09 * o]; eyeDartAt = t + .25 + Math.random() * .5; }
+    g.fillStyle = rgba(IND, .55 * o); circ(tx + eyeDart[0], ey + eyeDart[1], .028 * o, true);
+    g.fillStyle = rgba([235,230,255], .95 * o); circ(tx + eyeDart[0], ey + eyeDart[1], .011 * o, true);
+    if (lastBrain.includes("opus")) { neon([255,215,120], .35 * o, 1.2, 14); circ(tx, ey, .13 + .01 * Math.sin(t * 3)); }   // Opus: golden ring
+  }
+  // eyes
+  for (const s of [-1, 1]) {
+    const lid = clamp((s < 0 ? k.lidL : k.lidR) * blinkV, 0, 1.4), ex = tx + s * .28, ey = -.12, w = .14, h = .075 * lid;
+    neon(c, .75 * alpha, 2.4, 18);
+    curve([ex - w, ey], [ex - w*.4, ey - h*1.6], [ex + w*.4, ey - h*1.6], [ex + w, ey]);
+    curve([ex - w, ey], [ex - w*.4, ey + h*1.1 + .01], [ex + w*.4, ey + h*1.1 + .01], [ex + w, ey]);
+    if (lid > .15) {
+      let gx = ex + gaze[0] * .06 - s * k.cross * .05, gy = ey + gaze[1] * .03;
+      g.fillStyle = rgba(c, .35 * alpha); circ(gx, gy, .045 * Math.min(1, lid), true);
+      g.fillStyle = rgba([255,255,255], .9 * alpha); circ(gx, gy, (.012 + .02 * k.pupil) * Math.min(1, lid), true);
+    }
+  }
+  // nose
+  neon(c, .45 * alpha, 1.8, 12);
+  curve([tx + .02,-.05],[tx + .04 + k.scrunch*.02,.08],[tx + .07,.15],[tx + .02,.2]);
+  curve([tx - .07,.18 - k.scrunch*.03],[tx - .05,.22],[tx - .01,.22],[tx + .02,.2]);
+  if (k.scrunch > .4) { neon(c, .2 * alpha, 1.1, 6); line([[tx-.08,.02],[tx-.04,.05]]); line([[tx+.1,.02],[tx+.06,.05]]); }
+  // mouth
+  const my = .45, mw = .22 * (1 - k.pucker * .6) + k.smile * .03, sm = k.smile * .09, op = k.open * .14 + (mode === "speaking" ? AV.env * .12 : 0);
+  const lcY = my - sm - k.smirk * .03, rcY = my - sm - k.smirk * .1;
+  neon(c, .8 * alpha, 2.6, 18);
+  if (k.pucker > .6) { circ(tx, my + .01, .04 + op * .3); }
+  else {
+    curve([tx - mw, lcY], [tx - mw*.4, my + sm*.6 - .02], [tx + mw*.4, my + sm*.6 - .02], [tx + mw, rcY]);
+    curve([tx - mw, lcY], [tx - mw*.4, my + sm + op + .03], [tx + mw*.4, my + sm + op + .03], [tx + mw, rcY]);
+  }
+  mouthPt = [tx, my + .02];
+  if (k.tongue > .2) { g.fillStyle = rgba([255,120,150], .5 * alpha * k.tongue); circ(tx + .03, my + sm * .5 + op + .05, .05 * k.tongue, true); }
+  if (k.cheek > .2) { neon(c, .2 * alpha * k.cheek, 1.4, 10); for (const s of [-1,1]) curve([tx+s*.42,.2],[tx+s*.5,.3],[tx+s*.46,.42],[tx+s*.36,.48]); }
+  // ghost-hand gestures
+  if (exprHand) drawHand(exprHand, alpha);
+  g.restore();
+}
+function drawHand(kind, a) {
+  neon([200,220,255], .4 * a, 1.8, 14);
+  const fingers = (x, y, dir = -1, n = 4, len = .16) => { for (let f = 0; f < n; f++) line([[x - .06 + f * .045, y], [x - .06 + f * .045, y + dir * (len - Math.abs(f - 1.5) * .02)]]); };
+  if (kind === "scratch") { const wob = Math.sin(t * 9) * .02; circ(.55, -.72 + wob, .09); fingers(.55, -.8 + wob, -1, 4, .12); line([[.6,-.65],[.75,-.25]]); }
+  if (kind === "chin") { circ(.05, .95, .08); line([[.08,1.02],[.3,1.35]]); fingers(.05, .88, -1, 3, .09); }
+  if (kind === "palm") { circ(-.05, -.25, .16); fingers(-.05, -.4, -1, 4, .14); }
+  if (kind === "fist") { const up = Math.abs(Math.sin(t * 5)) * .1; circ(.95, .1 - up, .11); line([[.95,.21 - up],[.85,.6]]); }
+  if (kind === "tent") { for (const s of [-1,1]) { line([[s*.25,1.1],[s*.06,.85]]); } line([[-.06,.85],[.06,.85]]); }
+  if (kind === "brow") { const sw = Math.sin(t * 4) * .15; line([[-.35 + sw,-.5],[.35 + sw,-.5]]); circ(.5 + sw, -.5, .07); }
+  if (kind === "shrug") { for (const s of [-1,1]) { circ(s*.95, .2, .07); fingers(s*.95, .13, -1, 4, .08); } }
+}
+
+/* =============== X-RAY BRAIN =============== */
+function drawBrain(a) {
+  neon([170,120,255], .55 * a, 1.8, 16);
+  for (const s of [-1, 1]) {
+    curve([s*.03,-.82],[s*.55,-.95],[s*.62,-.3],[s*.05,-.32]);
+    for (let i = 0; i < 4; i++) { const y = -.78 + i * .12; curve([s*.08,y],[s*.25,y-.08],[s*.38,y+.06],[s*.5,y-.02]); }
+  }
+  neon([170,120,255], .35 * a, 1.4, 10); line([[0,-.32],[0,-.12]]);  // brain stem
+  for (let i = 0; i < 18; i++) {
+    const ph = (t * (.4 + i % 4 * .15) + i * .37) % 1, s = i % 2 ? 1 : -1;
+    const x = s * (.08 + ph * .5), y = -.8 + ((i * 7) % 5) * .11 + Math.sin(ph * 6.28) * .03;
+    g.fillStyle = `rgba(230,210,255,${.9 * a})`; circ(x, y, .012, true);
+  }
+}
+
+/* =============== PROPS =============== */
+function drawProp(name, a) {
+  const [x, y] = STATION[name] || [0, 0], bob = Math.sin(t * 2) * .03, c0 = PROP_COL[name] || [90,240,140];
+  switch (name) {
+    case "ear": neon([40,230,200], .55*a, 2.4, 18);
+      curve([x+.15,y-.3+bob],[x-.25,y-.35],[x-.3,y+.25],[x+.05,y+.3+bob]); curve([x+.05,y-.15],[x-.12,y-.12],[x-.12,y+.12],[x+.02,y+.12]);
+      for (let i = 0; i < 3; i++) { const r = ((t * .8 + i / 3) % 1); neon([40,230,200], .4*a*(1-r), 1.5, 10);
+        curve([x+.35+r*.4,y-.25-r*.1],[x+.25+r*.45,y-.08],[x+.25+r*.45,y+.08],[x+.35+r*.4,y+.25+r*.1]); } break;
+    case "hands": for (const s of [-1, 1]) { const hx = s * 1.25, hy = .35 + Math.sin(t * 3 + s) * .06; neon([90,240,140], .5*a, 2, 16);
+        curve([hx-.12,hy+.25],[hx-.15,hy],[hx-.1,hy-.15],[hx,hy-.18]); curve([hx+.12,hy+.25],[hx+.15,hy],[hx+.1,hy-.15],[hx,hy-.18]);
+        for (let f = 0; f < 4; f++) { const fx = hx - .09 + f * .06; line([[fx,hy-.12],[fx + s*.01,hy-.32 + Math.abs(Math.sin(t*6+f))*.04]]); } } break;
+    case "laptop": { neon([90,240,140], .55*a, 2, 16);
+        line([[x-.45,y-.35],[x+.45,y-.35],[x+.45,y+.05],[x-.45,y+.05]], true); line([[x-.6,y+.05],[x+.6,y+.05],[x+.7,y+.18],[x-.7,y+.18]], true);
+        for (let i = 0; i < 4; i++) { const w = .2 + ((i * 37 + (t * 4 | 0)) % 5) * .05; line([[x-.38,y-.27+i*.07],[x-.38+w,y-.27+i*.07]]); }
+        for (const s of [-1, 1]) { const hy = y + .12 + Math.abs(Math.sin(t * 14 + s)) * -.05; circ(x + s * .25, hy, .05); } } break;
+    case "globe": { neon([60,220,255], .6*a, 1.8, 18); circ(x, y, .32);
+        for (let i = 0; i < 3; i++) { const ph = (t * .6 + i / 3) % 1, w = Math.cos(ph * 3.14) * .32; g.beginPath(); const p = P(x, y); g.ellipse(p[0], p[1], Math.abs(w) * S, .32 * S, 0, 0, 6.283); g.stroke(); }
+        for (const yy of [-.15, 0, .15]) { const r = Math.sqrt(.32*.32 - yy*yy); line([[x-r,y+yy],[x+r,y+yy]]); } } break;
+    case "magnifier": { const mx = .28 + Math.sin(t) * .02, my = -.12; neon([60,220,255], .7*a, 3, 20); circ(mx, my, .16); line([[mx+.11,my+.11],[mx+.38,my+.38]]);
+        g.fillStyle = `rgba(120,220,255,${.08*a})`; circ(mx, my, .16, true); } break;
+    case "gears": { for (const [gx, gy, r, sp] of [[x, y, .22, 1], [x + .3, y - .3, .14, -1.6]]) { neon([255,170,70], .6*a, 2, 16); circ(gx, gy, r * .7);
+          for (let i = 0; i < 10; i++) { const an = t * sp + i * .628; line([[gx + Math.cos(an)*r*.7, gy + Math.sin(an)*r*.7],[gx + Math.cos(an)*r, gy + Math.sin(an)*r]]); } }
+        neon([255,170,70], .45*a, 2, 12); line([[x+.45,y+.2],[x+.45,y-.65],[x+.6,y-.65],[x+.6,y+.2]]);
+        if (Math.random() < .3) { const p = P(x + .52, y - .68); puff(p[0], p[1], [200,200,210], 1); } } break;
+    case "phone": { const px = x + Math.sin(t * 2.2) * .12, py = y + Math.sin(t * 4.4) * .06, rot = Math.sin(t * 3) * .25;
+        g.save(); const p = P(px, py); g.translate(p[0], p[1]); g.rotate(rot); g.translate(-p[0], -p[1]);
+        neon(c0, .7*a, 2.2, 18); line([[px-.12,py-.22],[px+.12,py-.22],[px+.12,py+.22],[px-.12,py+.22]], true); circ(px, py + .17, .02); g.restore();
+        for (let i = 0; i < 2; i++) { const r = (t * .9 + i * .5) % 1; neon(c0, .4*a*(1-r), 1.4, 8); circ(px, py, .3 + r * .3); } } break;
+    case "consult": { // fedora + cigar with smoke rings
+        neon([200,200,215], .65*a, 2.4, 16); curve([-.75,-.78],[-.4,-.9],[.4,-.9],[.75,-.78]); curve([-.42,-.82],[-.4,-1.25],[.4,-1.25],[.42,-.82]);
+        line([[-.42,-.92],[.42,-.92]]);
+        const cx0 = mouthPt[0] + .18, cy0 = .47; neon([255,170,100], .7*a, 4, 14); line([[cx0,cy0],[cx0+.32,cy0+.05]]);
+        g.fillStyle = `rgba(255,120,60,${.6+.4*Math.sin(t*3)})`; circ(cx0+.33, cy0+.05, .018, true);
+        if (Math.random() < .08) { const p = P(cx0 + .34, cy0); part(p[0], p[1], "ring", [210,210,225], 10, -40, 2.4); } } break;
+    case "monocle": { neon([230,190,110], .75*a, 2.4, 18); circ(.28, -.12, .13); line([[.41,-.12],[.55,.4]]);
+        const px0 = mouthPt[0] - .1, py0 = .5; neon([200,150,90], .7*a, 3, 12); line([[px0,py0],[px0-.25,py0+.12]]); circ(px0-.32, py0+.06, .07);
+        if (Math.random() < .2) { const p = P(px0 - .32, py0); puff(p[0], p[1], [220,210,200], 1); }
+        // "looking for a lost coin": eyes sweep low
+        gazeT = [Math.sin(t * .9) * .9, .9]; } break;
+    case "code": { if (Math.random() < .45) { const p = P(mouthPt[0], mouthPt[1]);
+          part(p[0], p[1], "glyph", [90,255,150], (Math.random() - .5) * 140, -40 - Math.random() * 90, 2.2, rnd(["{ }","< />",";","( )","=>","[ ]","#","fn","if","&&","==","++","</>"])); } } break;
+    case "dancers": { const r = .35, an = t * 1.4, mx = x + Math.cos(an) * .12, my = y + Math.sin(an) * .06;
+        for (const [dx, cc, gown] of [[-.09,[220,220,255],0],[.09,[255,60,90],1]]) {
+          const px = mx + dx * Math.cos(an * 2), py = my; neon(cc, .7*a, 2, 14);
+          circ(px, py - .25, .05); line([[px, py - .2],[px, py + (gown ? .02 : .05)]]);
+          if (gown) { line([[px, py - .05],[px - .12, py + .25],[px + .12, py + .25]], true); } else { line([[px, py + .05],[px - .05, py + .25]]); line([[px, py + .05],[px + .05, py + .25]]); line([[px-.04,py-.17],[px+.04,py-.17]]); }
+          line([[px, py - .14],[mx, py - .1]]); }
+        if (Math.random() < .25) { const p = P(x, y - .2); part(p[0], p[1], "letter", [255,200,230], (Math.random() - .3) * 120, -60 - Math.random() * 60, 2.4, rnd("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""))); } } break;
+    case "cinema": { neon([180,110,255], .6*a, 2, 16); line([[x-.38,y-.25],[x+.38,y-.25],[x+.38,y+.22],[x-.38,y+.22]], true);
+        const fl = .15 + .1 * Math.random(); g.fillStyle = `rgba(200,160,255,${fl*a})`; const p = P(x - .36, y - .23); g.fillRect(p[0], p[1], .72 * S, .43 * S);
+        neon([180,110,255], .4*a, 1.5, 8); for (let i = 0; i < 6; i++) { const fx = x - .38 + ((i * .14 + t * .2) % .84); line([[fx, y + .3],[fx + .08, y + .3]]); } } break;
+    case "disco": { neon([255,160,240], .6*a, 1.8, 16); circ(x, y, .16); line([[x, y - .16],[x, y - .4]]);
+        for (let i = 0; i < 6; i++) { const an = t * 1.5 + i * 1.05; neon([[255,90,200],[90,200,255],[255,230,90]][i % 3], .35*a, 1.5, 12);
+          line([[x, y],[x + Math.cos(an) * .7, y + .1 + Math.abs(Math.sin(an)) * .6]]); }
+        if (Math.random() < .2) { const p = P(x + (Math.random() - .5) * .8, y + .3); part(p[0], p[1], "note", rnd([[255,120,220],[120,220,255],[255,230,120]]), (Math.random() - .5) * 80, -70, 2.4, rnd(["♪","♫","♬"])); } } break;
+    case "stethoscope": { neon([120,230,255], .6*a, 2.4, 16); curve([-.45,.85],[-.5,1.3],[.5,1.3],[.45,.85]); circ(.3, 1.35, .07);
+        neon([120,230,255], .7*a, 1.8, 14); const pts = []; for (let i = 0; i <= 40; i++) { const xx = -1.1 + i * .055, ph = (i / 40 + t * .6) % 1;
+          pts.push([xx, 1.55 - (Math.abs(ph - .5) < .03 ? .2 : 0) + (Math.abs(ph - .53) < .02 ? .1 : 0)]); } line(pts); } break;
+    case "book": { neon([255,220,140], .6*a, 2, 14); line([[x-.32,y],[x,y+.08],[x+.32,y],[x+.32,y-.32],[x,y-.24],[x-.32,y-.32]], true); line([[x,y-.24],[x,y+.08]]);
+        const fl = (t * 1.2) % 1; curve([x, y - .24],[x + .15 * (1 - 2 * fl), y - .4],[x + .3 * (1 - 2 * fl), y - .35],[x + .32 * (1 - 2 * fl), y - .3]);
+        neon([255,220,140], .7*a, 2, 14); line([[x-.18,y-.6],[x,y-.68],[x+.18,y-.6],[x,y-.52]], true); line([[x+.15,y-.6],[x+.17,y-.45]]); } break;
+    case "quill": { neon([200,180,255], .65*a, 2, 14); const qx = x + Math.sin(t * 4) * .1; curve([qx-.05,y+.15],[qx+.1,y-.1],[qx+.25,y-.35],[qx+.3,y-.5]);
+        curve([qx-.05,y+.15],[qx+.05,y-.15],[qx+.2,y-.4],[qx+.3,y-.5]); line([[x-.35,y+.2],[x+.25,y+.2]]); neon([200,180,255], .35*a, 1.4, 8);
+        for (let i = 0; i < 3; i++) line([[x-.33,y+.27+i*.06],[x-.33+((t*2+i)%1)*.5,y+.27+i*.06]]); } break;
+    case "seal": { const sc = .9 + .1 * Math.abs(Math.sin(t * 3)); neon([255,140,60], .75*a, 2.4, 20); circ(x, y, .2 * sc); circ(x, y, .15 * sc);
+        text("ॐ", x, y + .01, .17, [255,170,90], .85 * a); } break;
+    case "mask": { neon([255,255,255], .5*a, 2, 16); const mw2 = .5 * Math.abs(Math.cos(t * 2)); curve([-mw2,-.3],[-mw2,.1],[mw2,.1],[mw2,-.3]); line([[-mw2,-.3],[mw2,-.3]]);
+        text("◈", 0, -.62, .12, [255,255,255], .7 * a); } break;
+    case "ink": { neon([255,80,80], .45*a, 10, 20); const pr = Math.min(1, (performance.now() - propT) / 900);
+        curve([-.9,-.6],[-.4,-.2],[.2,.3],[-.9 + 1.8 * pr, .6]); if (Math.random() < .3) { const p = P(-.9 + 1.8 * pr, .6); puff(p[0], p[1], [255,80,80], 1); } } break;
+    case "doc": { neon([180,220,255], .6*a, 2, 14); line([[x-.22,y-.3],[x+.12,y-.3],[x+.22,y-.2],[x+.22,y+.3],[x-.22,y+.3]], true);
+        for (let i = 0; i < 6; i++) line([[x-.16,y-.18+i*.08],[x+.14,y-.18+i*.08]]);
+        neon([90,255,200], .7*a, 2, 18); const sy = y - .3 + ((t * .5) % 1) * .6; line([[x-.26,sy],[x+.26,sy]]); } break;
+    case "frame": { neon([120,200,255], .6*a, 2, 14); line([[x-.32,y-.22],[x+.32,y-.22],[x+.32,y+.22],[x-.32,y+.22]], true);
+        neon([120,200,255], .3*a, 1.4, 8); line([[x-.25,y+.12],[x-.08,y-.05],[x+.05,y+.08],[x+.15,y-.02],[x+.25,y+.12]]); } break;
+    case "iris": { neon([120,220,255], .6*a, 2, 16); circ(x, y, .14); circ(x, y, .05 + .02 * Math.sin(t * 2)); } break;
+    case "bulb": { const b = .6 + .4 * Math.sin(t * 8); neon([255,230,120], .85*a, 2.4, 30);
+        circ(x, y, .14); line([[x-.06,y+.14],[x-.06,y+.22],[x+.06,y+.22],[x+.06,y+.14]]);
+        g.fillStyle = `rgba(255,235,150,${.35*a*b})`; circ(x, y, .14, true);
+        for (let i = 0; i < 8; i++) { const an = i * .785; line([[x+Math.cos(an)*.2,y+Math.sin(an)*.2],[x+Math.cos(an)*.28,y+Math.sin(an)*.28]]); } } break;
+    case "palm": { neon([255,180,70], .7*a, 2.4, 20);
+        curve([x-.2,y+.25],[x-.24,y],[x-.2,y-.12],[x-.14,y-.12]); curve([x+.2,y+.25],[x+.24,y],[x+.22,y-.12],[x+.16,y-.12]);
+        for (let f = 0; f < 4; f++) { const fx = x - .12 + f * .08; line([[fx,y-.1],[fx,y-.38 + Math.abs(f-1.5)*.05]]); } line([[x-.2,y-.02],[x-.34,y-.18]]); } break;
+    case "skull": { const sh = Math.sin(t * 18) * .015; neon([255,60,70], .9*a, 2.6, 26);
+        curve([x-.28+sh,y],[x-.3,y-.42],[x+.3,y-.42],[x+.28+sh,y]); line([[x-.28+sh,y],[x-.18,y+.18],[x+.18,y+.18],[x+.28+sh,y]]);
+        g.fillStyle = `rgba(255,60,70,${.7*a})`; circ(x-.11,y-.08,.07,true); circ(x+.11,y-.08,.07,true);
+        for (let i = 0; i < 5; i++) line([[x-.12+i*.06,y+.1],[x-.12+i*.06,y+.18 + Math.abs(Math.sin(t*12))*.04]]);
+        const sx = x + .62, sy = y - .05; neon([255,60,70], .9*a, 2.4, 22);
+        const oct = []; for (let i = 0; i < 8; i++) { const an = i * .785 + .39; oct.push([sx + Math.cos(an)*.2, sy + Math.sin(an)*.2]); } line(oct, true);
+        text("STOP", sx, sy, .085, [255,90,90], .95 * a); } break;
+    case "plug": { neon([150,150,170], .6*a, 2, 12); line([[x-.5,y],[x-.12,y]]); line([[x-.12,y-.08],[x-.12,y+.08],[x-.02,y+.08],[x-.02,y-.08]], true);
+        line([[x+.5,y],[x+.12,y]]); line([[x+.12,y-.06],[x+.06,y-.06]]); line([[x+.12,y+.06],[x+.06,y+.06]]); } break;
+  }
+}
+/* overlays tied to expressions */
+function drawFx(fx) {
+  if (fx === "zzz" && Math.random() < .03) { const p = P(.6, -.75); part(p[0], p[1], "letter", col, 30, -40, 2.6, "z"); }
+  if (fx === "hearts" && Math.random() < .08) { const p = P(mouthPt[0], mouthPt[1]); part(p[0], p[1], "note", [255,90,140], (Math.random() - .5) * 60, -70, 2, "♥"); }
+  if (fx === "sparkle" && Math.random() < .2) { const p = P((Math.random() - .5) * 1.6, -1 + Math.random() * .4); part(p[0], p[1], "dot", [255,240,180], 0, -20, 1); }
+  if (fx === "tear") { neon([120,200,255], .7, 2, 14); const ty = -.04 + ((t * .4) % 1) * .4; circ(.3, ty, .02, false); }
+  if (fx === "clouds" && Math.random() < .05) { const p = P((Math.random() - .5) * 2, -1.2); puff(p[0], p[1], [180,190,230], 2); }
+  if (fx === "rain" && Math.random() < .3) { const p = P((Math.random() - .5) * 1.2, -1.3); part(p[0], p[1], "drop", [120,160,255], 0, 160, 1); }
+  if (fx === "bulb") drawProp("bulb", .9);
+  if (fx === "confetti" && Math.random() < .2) { const p = P((Math.random() - .5) * 1.5, -1.1); part(p[0], p[1], "confetti", [255, 150 + Math.random() * 100, 100 + Math.random() * 150], (Math.random() - .5) * 60, 60, 1.6); }
+}
+
+/* =============== FRAME =============== */
+function frame(dt) {
+  AV.tick(dt); t += dt / 1000; const now = Q.get("shot") ? t * 1000 + 100000 : performance.now();
+  decide(now);
+  if (t > blinkAt) { blinkV = 0; if (t > blinkAt + .14) { blinkV = 1; blinkAt = t + 3 + Math.random() * 3; } }
+  const k = Math.min(1, dt / 380);
+  for (const key of KEYS) ctl[key] = lerp(ctl[key], target[key], k);
+  // gaze: follow the active prop (the face watches its own animations)
+  const active = mode === "error" ? "skull" : mode === "allow" ? null : mode === "listening" ? "ear" : (now < bulbUntil ? "bulb" : prop);
+  if (active && STATION[active] && active !== "monocle") { const s = STATION[active]; gazeT = [clamp(s[0], -1, 1), clamp(s[1] + .1, -1, 1)]; }
+  else if (!active && Math.random() < .01) gazeT = [(Math.random() - .5) * 1.2, (Math.random() - .5) * .6];
+  if (mode === "allow") gazeT = [0, 0];
+  if (exprLook === "up") gazeT = [Math.sin(t * 3) * .8, -1];
+  if (exprLook === "side") gazeT = [1, 0];
+  gaze[0] = lerp(gaze[0], gazeT[0], Math.min(1, dt / 140)); gaze[1] = lerp(gaze[1], gazeT[1], Math.min(1, dt / 140));
+  ctl.turn = lerp(ctl.turn, target.turn + gaze[0] * .25, k);
+  // colour
+  let c2 = COL[mode === "thinking" && prop ? "work" : mode] || COL.idle; if (mode === "thinking" && PROP_COL[prop]) c2 = PROP_COL[prop];
+  for (let i = 0; i < 3; i++) col[i] = lerp(col[i], c2[i], Math.min(1, dt / 600));
+  const NAMES = { hands:"WORKING THE PC", laptop:"TYPING", globe:"BROWSING", magnifier:"SEARCHING", gears:"BUILDING", phone:"ON THE PHONE",
+    consult:"CONSULTING", monocle:"RESEARCHING", code:"WRITING CODE", dancers:"MESSAGING", cinema:"WATCHING", disco:"MUSIC", stethoscope:"SELF-CHECK",
+    book:"LESSONS", quill:"TAKING NOTES", seal:"SAMASA", mask:"SWITCHING BRAIN", ink:"CHANGING VOICE", doc:"READING YOUR FILE", frame:"LOOKING AT THE SCREEN", iris:"CAMERA" };
+  word.textContent = mode === "thinking" ? (NAMES[prop] || "THINKING") : ({ idle: exprName === "dozing" ? "DOZING" : "IDLE", listening: "LISTENING",
+    speaking: "SPEAKING", allow: "WAITING FOR YOUR ALLOW", error: "SOMETHING WENT WRONG", offline: "OFFLINE" }[mode] || "");
+  word.style.color = rgba(col, .85);
+
+  // paint
+  g.shadowBlur = 0; g.globalCompositeOperation = "source-over"; g.fillStyle = "rgba(3,6,12,0.35)"; g.fillRect(0, 0, W, H);
+  S = Math.min(W, H) * (MOBILE ? .24 : .27); CX = W / 2; CY = H / 2 + S * .05;
+  g.globalCompositeOperation = "lighter";
+  const halo = g.createRadialGradient(CX, CY, 0, CX, CY, S * 1.5); halo.addColorStop(0, rgba(col, .12 + .04 * Math.sin(t * 1.05))); halo.addColorStop(1, rgba(col, 0));
+  g.fillStyle = halo; g.fillRect(0, 0, W, H);
+  const xray = mode === "thinking" && !prop;
+  drawFace(xray ? .45 : mode === "offline" ? .4 : 1);
+  if (xray) drawBrain(1);
+  if (mode === "listening") drawProp("ear", 1);
+  if (prop && mode !== "error" && mode !== "offline") drawProp(prop, 1);
+  if (now < bulbUntil) drawProp("bulb", 1);
+  if (mode === "allow") drawProp("palm", 1);
+  if (mode === "error") drawProp("skull", 1);
+  if (mode === "offline") drawProp("plug", 1);
+  if (exprFx) drawFx(exprFx);
+  if (JV().camera() && mode !== "error") drawProp("iris", .6);
+  if (now < levelUpUntil) { const f = (levelUpUntil - now) / 3800; g.shadowColor = "rgba(255,210,120,.9)"; g.shadowBlur = 30 * BLUR;
+    text("LEVEL " + lastLevel + "!", 0, -1.25 - (1 - f) * .2, .16, [255,220,140], Math.min(1, f * 2)); }
+  hudTick(now);
+  // particles
+  g.shadowBlur = 0;
+  for (let i = parts.length - 1; i >= 0; i--) { const p = parts[i]; p.life -= dt / 1000; if (p.life <= 0) { parts.splice(i, 1); continue; }
+    const f = p.life / p.max; p.x += p.vx * dt / 1000; p.y += p.vy * dt / 1000; p.rot += dt / 500;
+    if (p.kind === "letter") { p.vx += Math.sin(t * 4 + p.rot) * 2; }   // letters flutter like birds
+    if (p.kind === "confetti") p.vy += 140 * dt / 1000;
+    g.fillStyle = rgba(p.c, .8 * f); g.strokeStyle = rgba(p.c, .6 * f);
+    if (p.kind === "glyph" || p.kind === "letter" || p.kind === "note") { g.font = `bold ${S * (p.kind === "glyph" ? .07 : .09)}px monospace`; g.textAlign = "center"; g.fillText(p.ch, p.x, p.y); }
+    else if (p.kind === "ring") { g.lineWidth = 2; g.beginPath(); g.arc(p.x, p.y, (1 - f) * S * .15 + 4, 0, 6.283); g.stroke(); }
+    else if (p.kind === "drop") { g.fillRect(p.x, p.y, 1.5, 7); }
+    else if (p.kind === "confetti") { g.save(); g.translate(p.x, p.y); g.rotate(p.rot); g.fillRect(-3, -1.5, 6, 3); g.restore(); }
+    else { g.beginPath(); g.arc(p.x, p.y, 2, 0, 6.283); g.fill(); } }
+  if (parts.length > 260) parts.splice(0, parts.length - 260);
+  for (let i = smoke.length - 1; i >= 0; i--) { const s = smoke[i]; s.life -= dt / 2600; if (s.life <= 0) { smoke.splice(i, 1); continue; }
+    s.x += s.vx * dt / 1000; s.y += s.vy * dt / 1000; s.r += dt / 120;
+    const gr = g.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r); gr.addColorStop(0, rgba(s.c, .12 * s.life)); gr.addColorStop(1, rgba(s.c, 0));
+    g.fillStyle = gr; g.beginPath(); g.arc(s.x, s.y, s.r, 0, 6.283); g.fill(); }
+  if (Math.random() < (MOBILE ? .12 : .25)) puff(CX + (Math.random() - .5) * S * 1.6, CY + S * 1.1, col, 1);
+}
+
+/* =============== HUD (vitals) + JOURNAL =============== */
+let hudAt = 0;
+const hud = document.getElementById("hud"), stepEl = document.getElementById("step"), jr = document.getElementById("journal");
+function bar(lab, v, c) { return `<div class="row"><span class="lab">${lab}</span><span class="bar"><i style="width:${Math.max(2, Math.min(100, v))}%;background:${c}"></i></span></div>`; }
+function hudTick(now) {
+  if (now - hudAt < 250) return; hudAt = now;
+  const B = window.JV_BEHAVE, v = (B && B.vitals) || window.JV_VITALS;
+  if (!v) { hud.innerHTML = ""; stepEl.textContent = ""; return; }
+  const portrait = innerHeight > innerWidth * 1.15;
+  document.body.classList.toggle("portrait", portrait);
+  if (portrait) {
+    const mb = (lab, val, c) => `<span class="m"><span class="tag">${lab}</span><span class="bar"><i style="width:${Math.max(2, Math.min(100, val))}%;background:${c}"></i></span></span>`;
+    const t = (n, lab, cls) => `<div class="t ${cls || ""}"><b>${n}</b><span>${lab}</span></div>`;
+    hud.innerHTML = `<div class="top"><span class="lvl">LV ${v.level}</span>` + mb("XP", 100 * v.xp_in / v.xp_need, "#e3b341")
+      + mb("MORALE", v.morale, v.morale > 60 ? "#3fb950" : v.morale > 40 ? "#e3b341" : "#f85149")
+      + mb("ENERGY", v.energy, v.energy > 40 ? "#39c5cf" : "#f0883e") + `</div>`
+      + `<div class="tiles">` + t(v.streak, "🔥 STREAK", "fire") + t(v.best_streak, "BEST") + t(v.jobs_today, "JOBS")
+      + t(v.steps_today, "STEPS") + t(v.fails_today, "SLIPS", v.fails_today ? "bad" : "") + `</div>`;
+  } else
+  hud.innerHTML = `<div class="lvl">LV ${v.level}</div>` + bar("XP", 100 * v.xp_in / v.xp_need, "#e3b341")
+    + bar("MORALE", v.morale, v.morale > 60 ? "#3fb950" : v.morale > 40 ? "#e3b341" : "#f85149")
+    + bar("ENERGY", v.energy, v.energy > 40 ? "#39c5cf" : "#f0883e")
+    + `<div class="row sub">STREAK ${v.streak} · BEST ${v.best_streak}</div><div class="row sub">TODAY ${v.jobs_today} jobs · ${v.steps_today} steps · ${v.fails_today} slips</div>`;
+  const busy = B && B.busy_s && !["done","failed","lessons_done"].includes(B.phase) && Date.now() / 1000 - B.t < 15;
+  stepEl.textContent = busy ? `${(B.label || "").toUpperCase()} · STEP ${B.step}${B.retries ? " · RETRY " + B.retries : ""}${B.fails_row ? " · " + B.fails_row + " FAILED" : ""} · ${B.busy_s}s` : "";
+}
+const ICON = { start:"▶", step:"•", step_ok:"✓", failed_step:"✗", recovered:"↺", allow:"✋", allowed:"✔", denied:"⛔", error:"☠", done:"★", failed:"✗", lessons_done:"🎓" };
+async function openJournal() {
+  if (jr.style.display === "block") { jr.style.display = "none"; return; }
+  jr.style.display = "block"; jr.innerHTML = "<h3>JOURNAL</h3>Loading…";
+  try {
+    const d = await (await fetch("/api/behaviour", { cache: "no-store" })).json(), v = d.vitals;
+    const rows = d.events.slice().reverse().map(e => { const tm = new Date(e.t * 1000).toTimeString().slice(0, 5);
+      const cls = /fail|error|denied/.test(e.phase) ? "bad" : /done|ok|recovered|allowed/.test(e.phase) ? "ok" : "";
+      const what = e.detail || e.result || e.error || e.said || "";
+      return `<div class="ev ${cls}"><b>${tm} ${ICON[e.phase] || "•"} ${e.label}</b> · ${e.mood}${e.level_up ? " · LEVEL " + e.level_up + "!" : ""}<br><span style="opacity:.7">${String(what).replace(/</g, "&lt;").slice(0, 140)}</span></div>`; }).join("");
+    jr.innerHTML = `<h3>JOURNAL · LV ${v.level} · ${v.xp} XP</h3>` + (rows || "Nothing yet today.");
+  } catch (e) { jr.innerHTML = "<h3>JOURNAL</h3>Jarvis isn't reachable."; }
+}
+hud.addEventListener("click", openJournal);
+jr.addEventListener("click", () => { jr.style.display = "none"; });
+(async () => { if (Q.get("shot")) return; try { const d = await (await fetch("/api/behaviour", { cache: "no-store" })).json(); window.JV_VITALS = d.vitals; } catch (e) {} })();
+
+if (AV.shot) AV.shotRun(frame);
+else { let last = performance.now(); const loop = n => { frame(Math.min(100, n - last)); last = n; requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
+</script>
+</body>
+</html>

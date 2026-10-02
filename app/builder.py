@@ -1,4 +1,5 @@
-"""Builder: Jarvis downloads, builds and installs GitHub projects, and publishes folders to GitHub.
+"""Builder: Jarvis downloads, builds and installs GitHub projects, creates small new apps from
+Dr Wolf's description (project_create), and publishes folders to GitHub.
 
 Pen and paper: every build keeps a checklist (PLAN.md) in its folder under
 Desktop/Jarvis-Builds. A stronger model, the consultant (Claude Sonnet on his Claude plan, or
@@ -32,7 +33,7 @@ BUILDS = DESK / "Jarvis-Builds"
 CURRENT = BUILDS / ".current.json"
 GATE = None                       # set by the server: async (tool_name, input) -> bool
 GEMINI = None                     # set by the server: the Gemini brain (backup consultant)
-STEP_TIMEOUT = 20 * 60
+STEP_TIMEOUT = 45 * 60                 # first Android/Gradle builds download a lot
 MAX_ASKS = 3
 GH_API = "https://api.github.com"
 GH_WEB = "https://github.com"
@@ -44,7 +45,16 @@ CONSULT_RULES = (
     "Dr Wolf's Windows 11 PC by running PowerShell 5.1 commands one at a time from the project "
     "folder, without administrator rights. Be exact and brief. Prefer per-user installs and the "
     "tools already on the PC. Never use admin/sudo, never change system settings, never ask for "
-    "passwords or keys. Reply with JSON only, no prose around it.")
+    "passwords or keys. EVERY STEP RUNS IN A FRESH PowerShell: variables and $env: settings do NOT "
+    "carry over, so set $env:JAVA_HOME, $env:ANDROID_HOME, PATH etc. inside each command that needs "
+    "them (or write them into files such as local.properties). Put downloaded toolkits (JDK, Gradle, "
+    "Android command-line tools) under $env:USERPROFILE\\Jarvis-Tools as zip downloads "
+    "(Invoke-WebRequest -UseBasicParsing, then Expand-Archive), never installers that need admin. "
+    "In .properties files write Windows paths with forward slashes (sdk.dir=C:/Users/...). "
+    "A step that accepts a licence must say so plainly in its text. A step may also write files: give "
+    "them in its \"files\" list as {\"path\": relative to the project folder, \"content\": the WHOLE file}; "
+    "they are written before its command runs, so never write files with PowerShell Set-Content or "
+    "here-strings. Reply with JSON only, no prose around it.")
 
 
 # ----------------------------------------------------------------- helpers ----
@@ -119,7 +129,7 @@ async def _ask_claude(prompt: str) -> str:
             async for m in query(prompt=prompt, options=opts):
                 if isinstance(m, AssistantMessage):
                     out.extend(b.text for b in m.content if isinstance(b, TextBlock))
-        await asyncio.wait_for(go(), 240)
+        await asyncio.wait_for(go(), 420)               # writing a new app's files takes a while
         return "".join(out)
     except Exception as e:
         log.warning("consultant (Claude) unavailable: %s", str(e)[:200])
@@ -179,7 +189,9 @@ def _save(d: Path, job: dict):
     mark = {"done": "x", "failed": "!", "todo": " "}
     lines = [f"# Build plan: {job['name']}", "", f"Source: {job['url']}", "", job.get("summary", ""), ""]
     for s in job["steps"]:
-        lines.append(f"- [{mark[s['status']]}] {s['n']}. {s['text']}  `{s['cmd']}`"
+        files = ", ".join(f["path"] for f in s.get("files") or [])
+        lines.append(f"- [{mark[s['status']]}] {s['n']}. {s['text']}"
+                     + (f"  (writes {files})" if files else "") + (f"  `{s['cmd']}`" if s["cmd"] else "")
                      + (f"  -> {s['note']}" if s.get("note") else ""))
     if job.get("finish"):
         lines += ["", f"When it's done: {job['finish']}"]
@@ -187,11 +199,34 @@ def _save(d: Path, job: dict):
     CURRENT.write_text(json.dumps({"dir": str(d)}), encoding="utf-8")
 
 
+def _clean_rel(path: str) -> str | None:
+    """A file path the consultant gave, if it stays inside the project folder (no .., no drive, no .git)."""
+    p = str(path or "").strip().replace("\\", "/")
+    parts = [x for x in p.split("/") if x and x != "."]
+    if not parts or re.match(r"^[A-Za-z]:", p) or ".." in parts or parts[0] in (".git", ".jarvis-logs") \
+            or p in ("PLAN.md", ".jarvis-job.json"):
+        return None
+    return "/".join(parts)
+
+
+def _files(raw) -> list[dict]:
+    out = []
+    for f in raw or []:
+        rel = _clean_rel(f.get("path")) if isinstance(f, dict) else None
+        if rel and isinstance(f.get("content"), str) and len(f["content"]) <= 200_000:
+            out.append({"path": rel, "content": f["content"]})
+    return out[:30]
+
+
 def _steps(raw) -> list[dict]:
     out = []
     for s in raw or []:
-        if isinstance(s, dict) and str(s.get("cmd") or "").strip():
-            out.append({"text": str(s.get("text") or s["cmd"])[:200], "cmd": str(s["cmd"]).strip(),
+        if not isinstance(s, dict):
+            continue
+        cmd, files = str(s.get("cmd") or "").strip(), _files(s.get("files"))
+        if cmd or files:
+            text = s.get("text") or cmd or "Write " + ", ".join(f["path"] for f in files)
+            out.append({"text": str(text)[:200], "cmd": cmd, "files": files,
                         "check": str(s.get("check") or "").strip(), "status": "todo", "note": ""})
     return out[:25]
 
@@ -208,39 +243,93 @@ def _repo_of(source: str) -> tuple[str, str] | None:
 
 
 async def _facts(owner: str, name: str) -> dict | None:
+    """The repo's details from GitHub's API. That API allows only 60 lookups an hour per internet
+    address (shared by everyone on the same connection), so when it says no, git itself checks
+    that the repo exists (git has no such limit)."""
     try:
         async with httpx.AsyncClient(timeout=15) as c:
             r = await c.get(f"{GH_API}/repos/{owner}/{name}", headers={"Accept": "application/vnd.github+json"})
-        return r.json() if r.status_code == 200 else None
-    except Exception:
+        if r.status_code == 200:
+            return r.json()
+        log.info("GitHub API said %s for %s/%s; checking with git instead", r.status_code, owner, name)
+        if r.status_code == 404:
+            return None
+    except Exception as e:
+        log.info("GitHub API unreachable (%s); checking with git instead", str(e)[:120])
+    code, out = await git(["ls-remote", "--heads", f"{GH_WEB}/{owner}/{name}.git"], BUILDS if BUILDS.exists() else DESK,
+                          timeout=60)
+    if code:                                            # an empty new repo is fine: exit 0, no branches
         return None
+    return {"html_url": f"{GH_WEB}/{owner}/{name}", "description": "", "limited": True}
 
 
 KEY_FILES = ("package.json", "pyproject.toml", "requirements.txt", "setup.py", "Cargo.toml", "go.mod",
              "build.gradle", "build.gradle.kts", "CMakeLists.txt", "Makefile", "pom.xml", "install.bat",
              "install.ps1", "setup.bat", "setup.ps1")
 PC_TOOLS = ("git", "python", "py", "uv", "pip", "node", "npm", "pnpm", "yarn", "java", "dotnet", "cargo",
-            "go", "cmake", "winget", "choco", "ollama")
+            "go", "cmake", "winget", "choco", "ollama", "gradle", "adb", "sdkmanager", "code")
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "models", "logs", "memory", "secrets"}
+
+
+def _pc_tools() -> str:
+    have = [t for t in PC_TOOLS if shutil.which(t)]
+    for var in ("JAVA_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        if os.environ.get(var):
+            have.append(f"{var}={os.environ[var]}")
+    for label, p in (("Android SDK folder", Path(os.environ.get("LOCALAPPDATA", "")) / "Android" / "Sdk"),
+                     ("Jarvis-Tools folder", Path(os.environ.get("USERPROFILE") or Path.home()) / "Jarvis-Tools")):
+        if os.environ.get("LOCALAPPDATA" if "SDK" in label else "USERPROFILE") and p.is_dir():
+            have.append(f"{label} {p} contains: {', '.join(sorted(x.name for x in p.iterdir())[:20])}")
+    return f"ALREADY ON THE PC: {', '.join(have) or 'nothing detected'}"
+
+
+def _file_list(d: Path, limit: int = 200) -> list[str]:
+    files = []
+    for root, dirs, names in os.walk(d):
+        dirs[:] = sorted(x for x in dirs if x not in SKIP_DIRS and x not in (".jarvis-logs", "build", "dist", ".gradle"))
+        rel = Path(root).relative_to(d).as_posix()
+        files += [(f"{rel}/" if rel != "." else "") + x for x in sorted(names)]
+        if len(files) >= limit:
+            break
+    return files[:limit]
 
 
 def _context(d: Path) -> str:
     readme = next((p for p in d.iterdir() if p.is_file() and p.name.lower().startswith("readme")), None)
-    files = []
-    for root, dirs, names in os.walk(d):
-        dirs[:] = sorted(x for x in dirs if x not in SKIP_DIRS)
-        rel = Path(root).relative_to(d).as_posix()
-        files += [(f"{rel}/" if rel != "." else "") + x for x in sorted(names)]
-        if len(files) >= 200:
-            break
     heads = []
     for k in KEY_FILES:
         if (d / k).is_file():
             heads.append(f"--- {k} ---\n" + (d / k).read_text(encoding="utf-8", errors="replace")[:1500])
-    have = [t for t in PC_TOOLS if shutil.which(t)]
     return ("README:\n" + (readme.read_text(encoding="utf-8", errors="replace")[:7000] if readme else "(none)")
-            + "\n\nFILES:\n" + "\n".join(files) + "\n\n" + "\n".join(heads)
-            + f"\n\nALREADY ON THE PC: {', '.join(have) or 'nothing detected'}")
+            + "\n\nFILES:\n" + "\n".join(_file_list(d)) + "\n\n" + "\n".join(heads) + "\n\n" + _pc_tools())
+
+
+SOURCE_EXT = {".py", ".js", ".mjs", ".ts", ".tsx", ".jsx", ".html", ".css", ".json", ".toml", ".txt", ".md",
+              ".ps1", ".bat", ".cmd", ".java", ".kt", ".kts", ".gradle", ".xml", ".properties", ".cs",
+              ".csproj", ".go", ".rs", ".c", ".cpp", ".h", ".yml", ".yaml", ".ini", ".cfg", ".sh"}
+
+
+def _source(d: Path, budget: int = 45_000) -> str:
+    """The project's own text files, so the consultant can fix the code itself (small apps only)."""
+    out, used = [], 0
+    for rel in _file_list(d, 400):
+        p = d / rel
+        if rel in ("PLAN.md", ".jarvis-job.json") or p.suffix.lower() not in SOURCE_EXT \
+                or rel.endswith(("package-lock.json", "yarn.lock")):
+            continue
+        try:
+            if p.stat().st_size > 60_000:
+                out.append(f"--- {rel} --- (too big to show)")
+                continue
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if used + len(text) > budget:
+            out.append(f"--- {rel} --- (not shown: out of room)")
+            continue
+        out.append(f"--- {rel} ---\n{text}")
+        used += len(text)
+    return "\n".join(out) or "(no source files yet)"
 
 
 # ------------------------------------------------------------- build tools ----
@@ -251,9 +340,12 @@ async def project_start(source: str) -> str:
     owner, name = rid
     info = await _facts(owner, name)
     if not info:
-        return f"I couldn't find github.com/{owner}/{name} (it may be private or misspelled)."
+        return (f"I couldn't find github.com/{owner}/{name} (it may be private or misspelled). Tell him; "
+                "don't download or build it any other way.")
     url = info.get("html_url") or f"https://github.com/{owner}/{name}"
-    facts = (f"{info.get('stargazers_count', 0)} stars, last updated {str(info.get('pushed_at', ''))[:10]}, "
+    facts = ("GitHub's details unavailable right now (its hourly lookup limit is used up), but the project exists"
+             if info.get("limited") else
+             f"{info.get('stargazers_count', 0)} stars, last updated {str(info.get('pushed_at', ''))[:10]}, "
              f"license {((info.get('license') or {}).get('spdx_id')) or 'none'}, "
              f"{round((info.get('size') or 0) / 1024)} MB" + (", ARCHIVED" if info.get("archived") else ""))
     BUILDS.mkdir(parents=True, exist_ok=True)
@@ -263,11 +355,13 @@ async def project_start(source: str) -> str:
             return "He didn't allow the download. Stop and ask him what he wants."
         code, out = await git(["clone", "--depth", "1", url + ".git", str(d)], BUILDS, timeout=1800)
         if code:
-            return f"The download failed: {tail(out, 6)}"
+            return f"The download failed: {tail(out, 6)}. Tell him; don't download it any other way."
     ctx = await asyncio.to_thread(_context, d)
     plan, who = await consult(
         "Write the install plan for this GitHub project on Windows 11.\n"
-        f"Project: {url} ({info.get('description') or 'no description'}; {facts})\n\n{ctx}\n\n"
+        f"Project: {url} ({info.get('description') or 'no description'}; {facts})\n"
+        f"It is ALREADY downloaded to {d}, and every command runs with that folder as the current "
+        "directory. Don't download or clone the project again.\n\n{ctx}\n\n"
         'Reply as JSON: {"summary": "one sentence: what it is and how it gets installed", '
         '"steps": [{"text": "short plain-English step", "cmd": "exact PowerShell command", '
         '"check": "PowerShell command that exits 0 only if the step worked, or empty"}], '
@@ -288,6 +382,53 @@ async def project_start(source: str) -> str:
             "for his go. Then call project_next, once per step.")
 
 
+def _slug(text: str) -> str:
+    words = re.findall(r"[A-Za-z0-9]+", text or "")[:4]
+    return "-".join(w.capitalize() for w in words)[:40] or "New-App"
+
+
+async def project_create(idea: str, name: str = "") -> str:
+    """A brand-new small app from his description: the consultant writes the plan and the first
+    files; the brain on duty runs, tests and fixes it step by step, like any other build."""
+    idea = (idea or "").strip()
+    if len(idea) < 8:
+        return "Ask him what the app should do (a sentence or two), then call project_create again."
+    BUILDS.mkdir(parents=True, exist_ok=True)
+    base = _slug(name or idea)
+    d, i = BUILDS / base, 2
+    while d.exists() and any(d.iterdir()):
+        d, i = BUILDS / f"{base}-{i}", i + 1
+    plan, who = await consult(
+        "Dr Wolf wants a NEW small app built from scratch on his Windows 11 PC. His words:\n"
+        f"\"{idea}\"\n\nThe project folder is {d} (empty); every command runs there.\n{_pc_tools()}\n\n"
+        "Design the simplest thing that does what he asked: prefer Python (standard library, or a "
+        "project-local .venv for anything else) or plain HTML/JS, unless he named a platform. Keep "
+        "it to a few short, readable files with a README.md saying how to run it. Put all code in "
+        "the steps' \"files\" lists. Plan it so a small local AI can carry it out one step at a "
+        "time: write the files, install what's needed, then TEST it with a command that exits 0 "
+        "only if it works (a small test script or a --selftest flag; never a command that waits "
+        "for a window to be closed or runs forever). The last step proves it runs.\n\n"
+        'Reply as JSON: {"name": "short app name", "summary": "one sentence: what it does and how '
+        'it is built", "steps": [{"text": "short plain-English step", "files": [{"path": "...", '
+        '"content": "..."}], "cmd": "exact PowerShell command, or empty", "check": "PowerShell '
+        'command that exits 0 only if the step worked, or empty"}], "finish": "how Dr Wolf starts '
+        'it", "warnings": ["anything he must do himself"]}. At most 12 steps.')
+    steps = _steps(plan.get("steps"))
+    if not steps:
+        return ("No consultant could plan the app (Claude and Gemini both unreachable, or the reply "
+                "was unusable). Tell him; don't write it yourself.")
+    d.mkdir(parents=True, exist_ok=True)
+    job = {"url": f"new app: {idea[:300]}", "name": str(plan.get("name") or d.name)[:60], "kind": "create",
+           "idea": idea, "summary": plan.get("summary", ""), "steps": steps, "finish": plan.get("finish", ""),
+           "warnings": plan.get("warnings") or [], "asks": 0, "planner": who,
+           "started": datetime.datetime.now().isoformat(timespec="seconds")}
+    _save(d, job)
+    warn = "".join(f"\n- He must: {w}" for w in job["warnings"][:5])
+    return (f"{who} designed {job['name']} in {d} (plan in PLAN.md):\n{job['summary']}\n"
+            f"{_plan_lines(job)}{warn}\n\nRead him the plan in short lines and wait for his go. "
+            "Then call project_next, once per step.")
+
+
 async def project_next() -> str:
     d, job = _load()
     if not job:
@@ -295,10 +436,25 @@ async def project_next() -> str:
     step = next((s for s in job["steps"] if s["status"] != "done"), None)
     if not step:
         return f"All {len(job['steps'])} steps are done. {job.get('finish', '')}"
-    shown = step["cmd"] + (f"   [then check: {step['check']}]" if step["check"] else "")
-    if not await _gate("run_command", {"command": shown}):
+    shown = (step["cmd"] + (f"   [then check: {step['check']}]" if step["check"] else "")).strip()
+    files = step.get("files") or []
+    if files:
+        ok = await _gate("project_write", {"folder": str(d), "files": [f["path"] for f in files], "command": shown})
+    else:
+        ok = await _gate("run_command", {"command": shown, "folder": str(d)})
+    if not ok:
         return "He didn't allow that step. Stop and ask him what he wants."
-    code, out = await sh(step["cmd"], d)
+    wrote = []
+    for f in files:
+        p = (d / f["path"]).resolve()
+        if d.resolve() not in p.parents:
+            continue
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f["content"], encoding="utf-8")
+        wrote.append(f["path"])
+    code, out = await sh(step["cmd"], d) if step["cmd"] else (0, "")
+    if wrote:
+        out = f"(wrote {', '.join(wrote)})\n{out}"
     logs = d / ".jarvis-logs"
     logs.mkdir(exist_ok=True)
     (logs / f"step-{step['n']}.log").write_text(f"$ {step['cmd']}\nexit {code}\n{out}", encoding="utf-8")
@@ -337,14 +493,23 @@ async def project_ask(question: str = "") -> str:
         last = (d / ".jarvis-logs" / f"step-{step['n']}.log").read_text(encoding="utf-8")
     except OSError:
         last = "(this step hasn't run yet)"
+    new_app = job.get("kind") == "create"
+    what = (f"building a NEW app for Dr Wolf (his words: \"{job.get('idea', '')}\") in {d}" if new_app
+            else f"installing {job['url']} on Windows 11")
+    code_now = (f"\n\nTHE APP'S FILES RIGHT NOW (you wrote them; fix the code itself when that's the problem):\n"
+                f"{await asyncio.to_thread(_source, d)}\n\n{_pc_tools()}" if new_app else "")
     fix, who = await consult(
-        f"Jarvis is installing {job['url']} on Windows 11 and is stuck.\nPlan so far:\n{_plan_lines(job)}\n\n"
-        f"Current step {step['n']}: {step['text']}\nCommand: {step['cmd']}\nCheck: {step['check'] or '-'}\n"
-        f"Last output:\n{tail(last, 40, 3500)}\n\nJarvis says: {question or '(no comment)'}\n\n"
+        f"Jarvis is {what} and is stuck.\nPlan so far:\n{_plan_lines(job)}\n\n"
+        f"Current step {step['n']}: {step['text']}\nFiles it writes: "
+        f"{', '.join(f['path'] for f in step.get('files') or []) or '-'}\nCommand: {step['cmd'] or '-'}\n"
+        f"Check: {step['check'] or '-'}\nLast output:\n{tail(last, 40, 3500)}{code_now}\n\n"
+        f"Jarvis says: {question or '(no comment)'}\n\n"
         'Reply as JSON: {"answer": "one or two plain sentences: what went wrong and the fix", '
         '"replace_step": true if the new steps replace the current step, false to insert them before it, '
-        '"steps": [{"text": "...", "cmd": "exact PowerShell command", "check": "..."}], '
-        '"give_up": true only if it can\'t work on this PC, "reason": "why, if give_up"}')
+        '"steps": [{"text": "...", "files": [{"path": "...", "content": "the whole corrected file"}], '
+        '"cmd": "exact PowerShell command, or empty", "check": "..."}], '
+        '"give_up": true only if it can\'t work on this PC, "reason": "why, if give_up"}. '
+        "To fix code, give a step that rewrites the files and re-runs the test.")
     if not fix:
         return "No consultant could be reached (Claude and Gemini both unavailable). Tell him."
     job["asks"] = job.get("asks", 0) + 1

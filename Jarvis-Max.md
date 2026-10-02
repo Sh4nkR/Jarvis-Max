@@ -1,16 +1,19 @@
-# Jarvis-Max
+# Jarvis-Max, with Jarvis-Hands™ for PC and Android
 
-**A voice-first AI desktop assistant for Windows with seven swappable brains, eyes, hands, a memory, and a nightly self-improvement loop.**
+**One AI assistant across your Windows PC and your Android phone: voice, eyes, hands on both devices, a memory, and a nightly self-improvement loop.**
 
-You talk; Jarvis answers in a calm British voice. He can see your screen and webcam, click and type with your mouse and keyboard (only when you allow it), search and read the web, keep notes about you, and learn from his own mistakes overnight. He can run on Claude, on Gemini, or fully on your own PC with a local Qwen model, and you can switch brains at any time from a menu or just by asking.
+You talk, and Jarvis answers in the voice you pick (British, or the acted yakuza and rikuo characters). On the **PC** he sees your screen and webcam and works your mouse and keyboard. On the **phone**, the Jarvis-Hands™ Android app gives him hands: he reads the screen, opens apps, taps, types, scrolls and places calls. Chrome on the phone carries his face, ears and voice. He builds Android apps (on the PC or on GitHub), learns from files you hand him, remembers you, and improves overnight. Brains are switchable: Claude, Gemini, or a local Qwen model on your own PC.
 
-Everything runs locally on `127.0.0.1`. The only things that leave your PC are the requests to whichever cloud brain you pick.
+Everything runs on your own PC (`127.0.0.1`, plus your home Wi-Fi for the phone). The only things that leave it are the requests to whichever cloud brain you pick.
+
+**Safety, always:** every risky action (calls, builds, publishing, shell commands) waits for your ALLOW. He never types passwords, PINs or OTPs, stays out of banking and payment apps, and keys never go to GitHub.
 
 ---
 
 ## Contents
 
 - [Features](#features)
+- [What's new (Sept–Oct 2026)](#whats-new-septoct-2026)
 - [The seven brains](#the-seven-brains)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
@@ -40,6 +43,35 @@ Everything runs locally on `127.0.0.1`. The only things that leave your PC are t
 | **Memory** | A plain-Markdown vault: a boot file, one note per subject, and a daily log. The brains read and write it themselves. | `memory/` folder |
 | **Growth** | Every request is logged with your thumbs-up or thumbs-down. Each night the local model writes lessons and skills, rewrites everything into one short contradiction-free list, and keeps the changes only if a test sheet scores the same or better. | `app/growth.py` |
 | **Face + dock** | An animated full-screen face (four styles) with a one-click button dock underneath. | ai-visualizer by Jared Rhodenizer |
+
+---
+
+## What's new (Sept–Oct 2026)
+
+![How Jarvis-Max works](Jarvis-Max-workflow.png)
+
+To rebuild Jarvis from scratch, step by step, read [BUILD-JARVIS.md](BUILD-JARVIS.md) (box numbers match the picture).
+
+| New | What it does | Status |
+|---|---|---|
+| **APK on this PC** | `android_build <folder>`: builds an Android app's debug APK with Android Studio's own Java, SDK and Gradle. ALLOW first. | Tested |
+| **APK on GitHub** | `github_build <folder> <repo>` adds a build recipe and pushes (via `github_publish`); `github_build_status` downloads the APK GitHub built. APKs go to `Desktop\Jarvis-Builds\APKs`. | Tested |
+| **+ button** | Add pictures, PDFs or text files. They're saved in `memory/inbox/<date>/`; Jarvis reads them and writes notes and skills from them. | Tested |
+| **Skill guides** | "Write a skill guide for X": Opus writes `memory/notes/skills/<name>.md` (use when, numbered tool steps, check, never). Every brain sees the list; nightly lessons never rewrite them, so small Qwen can follow big-brain recipes. | Built |
+| **Phone hands** | Jarvis Hands app: read the phone screen, open apps, tap, type, scroll, Back/Home. Refuses banking/payment apps and password/PIN/OTP boxes. | Working, being smoothed |
+| **Phone calls** | `phone_call <name or number>`: finds the contact and calls, after an ALLOW card on screen. | Built, being tested on the phone |
+| **Lessons by Gemini** | Nightly lessons are written by Gemini Flash-Lite (free key), with Qwen as backup. `"lessons_brain": "qwen"` in `jarvis.json` keeps it local. | Working |
+| **Gemini free-key limits** | The free key allows 5 requests a minute per model. Jarvis now rotates models, waits when needed, and carries on instead of giving up. | Built |
+| **Self-check and repair** | Runs on switching to Opus: 10 real-screen checks. On failure, Opus proposes a fix to a copy, you ALLOW, you restart, and it re-checks or restores. | Tested |
+| **Samasa codewords** | One `samasa` call runs a whole known step sequence (OPN-VRF, URL-RD, CLK-VRF, TYP-ENT, PH-OPN, PH-TAP, PH-TYP), so there are fewer round trips and fewer tokens. Codebook: `memory/samasa.json`; nightly mining writes repeat patterns to `memory/samasa-proposals.md`. Only safe look/click/type/read tools allowed. Code: `app/samasa.py`. (The Lingo tag shorthand was left out on purpose: memory is small, so the saving would be tiny.) | Tested |
+| **Jarvis-Hands™ Android app (hands only)** | Simple screen: give hands, hands on/off, open Jarvis in Chrome, PC address. Chrome does face, mic, voice and typing; the app does hands and calls. | Built, being tested on the phone |
+| **Voices** | `switch_voice`: british, yakuza (proud dojo boss) and rikuo (wild loner) are acted by Gemini's speech model, with a deep backup voice; plus japanese, indian and american. | Built |
+| **Yantra–Tantra–Mantra method** | Opus writes the guide (`TANTRA-NN-*.md`), Gemini or Jarvis builds it, Dr Wolf tests it. | In use |
+| **Living Face** | New default face (`app/face/faces/living/`): a holographic neon face with 131 expressions and 27 props, one for each kind of job (ear while listening, laptop, globe, gears, phone, stethoscope, quill …). Effects sounds only. Ink Lotus kept as a spare face. | Tested on PC and phone |
+| **Behaviour Layer** | `app/behaviour.py`: what Jarvis is really doing (activity, step, retries, waiting for ALLOW) drives the face's mood, from facts only, never a happy face on a failing step. Logged to `logs/behaviour.jsonl`; `/api/behaviour` serves it; tap the panel for his journal. See TANTRA-06. | Tested |
+| **Vitals and counter card** | Level, XP, morale, energy, plus streak, best, jobs today, steps and slips. On the phone they show as one card between the dock panel and the face. XP is only earned by steps that really succeeded. | Tested |
+| **Eureka bulb and third eye** | The bulb lights only when he recovers from a failure. A third eye opens during long, serious work (build, code, research), with a gold ring when Opus is the brain. | Tested |
+| **Wisdom** | `app/wisdom.py`: lessons that survive 7 days and 5 nightly reviews become sutras in `memory/notes/Wisdom.md`, and one daily sutra goes to `Sutras.md`. Prime directive: turn knowledge into wisdom. "Forgive, but never forget." | Tested |
 
 ---
 
@@ -160,7 +192,7 @@ Things to say: *"switch to Opus"*, *"research the best budget GPU this year"*, *
 
 ## Building from GitHub and publishing to GitHub
 
-`app/builder.py` gives every brain five tools: `project_start`, `project_next`, `project_ask`, `project_status` and `github_publish`.
+`app/builder.py` gives every brain `project_start`, `project_create`, `project_next`, `project_ask`, `project_status` and `github_publish`; `app/apkbuild.py` adds `android_build`, `github_build` and `github_build_status`.
 
 **Build and install a GitHub project, pen-and-paper style:**
 

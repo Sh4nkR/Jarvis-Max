@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!-- Jarvis's self-check page. Jarvis opens it in the normal browser, uses his real mouse and
+     keyboard on it, and the page reports back what really happened (clicks, typing, keys,
+     scrolling), so the check never takes his own word for it. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hands Self-Test</title>
+<style>
+  body{margin:0;background:#fff;color:#000;font:bold 34px/1.5 "Segoe UI",Arial,sans-serif}
+  main{max-width:1200px;margin:0 auto;padding:40px 40px 120px}
+  h1{font-size:54px;margin:0 0 18px}
+  p{margin:0 0 26px}
+  .note{font-weight:normal;font-size:28px}
+  button{font:bold 40px "Segoe UI",Arial,sans-serif;padding:16px 40px;margin:8px 24px 8px 0;background:#e6efff;
+         color:#000;border:3px solid #000;border-radius:10px;cursor:pointer}
+  input{font:36px "Segoe UI",Arial,sans-serif;width:900px;max-width:100%;padding:14px;border:3px solid #000;border-radius:8px}
+  #seen{color:#0a6b2f;min-height:1.5em}
+</style>
+</head>
+<body>
+<main>
+  <h1>SELFTEST TOP MARKER ALPHA</h1>
+  <p class="note">Jarvis is checking his own mouse and keyboard on this page. Please leave them alone for a minute.</p>
+  <p><button id="one">PRESS ME</button><button id="two">SECOND BUTTON</button></p>
+  <p><input id="box" type="text" placeholder="Type here for Jarvis" autocomplete="off" spellcheck="false"></p>
+  <p id="seen"></p>
+  <div id="lines"></div>
+  <h1>SELFTEST BOTTOM MARKER OMEGA</h1>
+</main>
+<script>
+"use strict";
+(() => {
+  const run = new URLSearchParams(location.search).get("run") || "";
+  const st = { run, loaded: true, clicks: 0, second: 0, value: "", enter: false, typed: "",
+               maxScroll: 0, bottom: false, keys: [] };
+  const lines = document.getElementById("lines");
+  for (let i = 1; i <= 36; i++) {
+    const p = document.createElement("p");
+    p.textContent = `Line ${i} of the self check: the quick brown fox jumps over the lazy dog.`;
+    lines.appendChild(p);
+  }
+  let t = null;
+  function report() {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      fetch("/api/selftest/report", { method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify(st) }).catch(() => {});
+    }, 120);
+  }
+  const seen = (s) => { document.getElementById("seen").textContent = s; };
+  const box = document.getElementById("box");
+  document.getElementById("one").onclick = () => { st.clicks++; seen("Button one was clicked."); report(); };
+  document.getElementById("two").onclick = () => { st.second++; seen("Button two was clicked."); report(); };
+  box.addEventListener("input", () => { st.value = box.value; if (box.value) st.typed = box.value; report(); });
+  addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target === box) { st.enter = true; st.value = box.value; }
+    if (e.ctrlKey || e.key.length > 1) st.keys = st.keys.concat((e.ctrlKey ? "ctrl+" : "") + e.key.toLowerCase()).slice(-12);
+    report();
+  }, true);
+  addEventListener("scroll", () => {
+    st.maxScroll = Math.max(st.maxScroll, Math.round(scrollY));
+    if (innerHeight + scrollY >= document.documentElement.scrollHeight - 40) st.bottom = true;
+    report();
+  }, { passive: true });
+  report();
+})();
+</script>
+</body>
+</html>

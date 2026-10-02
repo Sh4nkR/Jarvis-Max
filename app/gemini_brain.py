@@ -161,24 +161,46 @@ class GeminiBrain(LocalBrain):
         """Gemini's newest models are sometimes 'experiencing high demand' (503). Then the next
         newest Flash answers instead, and the busy one is skipped for five minutes."""
         order = [self.model_id] + [f for f in self.flashes if f != self.model_id]
-        now = time.monotonic()
-        order = [m for m in order if self._busy_until.get(m, 0) <= now] or order
         last = None
-        for m in order[:4]:
-            for attempt in range(2):
-                try:
-                    async for chunk in self._stream(m):
-                        yield chunk
-                    return
-                except _Refused as e:            # refusals come before the first chunk
-                    if e.code not in (500, 502, 503, 504):
-                        raise
-                    last = e
-                    if attempt == 0:
-                        await asyncio.sleep(1.2)
-                        continue
-                    self._busy_until[m] = time.monotonic() + 300
-                    log.info("gemini: %s is busy (%s), trying the next model", m, e.code)
+        for lap in range(2):
+            now = time.monotonic()
+            live = [m for m in order if self._busy_until.get(m, 0) <= now]
+            if not live and lap == 0:
+                live = order
+            for m in live[:4]:
+                for attempt in range(2):
+                    try:
+                        async for chunk in self._stream(m):
+                            yield chunk
+                        return
+                    except _Refused as e:            # refusals come before the first chunk
+                        if e.code == 429:            # the FREE key allows ~5 requests a minute per model
+                            last = e
+                            daily = "PerDay" in e.detail
+                            self._busy_until[m] = time.monotonic() + (3600 if daily else 60)
+                            log.info("gemini: %s hit its free %s limit, trying the next model", m,
+                                     "daily" if daily else "per-minute")
+                            break
+                        if e.code not in (500, 502, 503, 504):
+                            raise
+                        last = e
+                        if attempt == 0:
+                            await asyncio.sleep(1.2)
+                            continue
+                        self._busy_until[m] = time.monotonic() + 300
+                        log.info("gemini: %s is busy (%s), trying the next model", m, e.code)
+            if lap == 0 and isinstance(last, _Refused) and last.code == 429 and "PerDay" not in last.detail:
+                m_ = re.search(r'"retryDelay":\s*"(\d+)', last.detail)
+                wait = min(60, int(m_.group(1)) + 1 if m_ else 60)
+                log.info("gemini: every model is at its per-minute limit; waiting %s s", wait)
+                yield {"candidates": [{"content": {"parts": [
+                    {"text": "One moment, sir: Gemini's free allowance needs a short breather. "}]}}]}
+                await asyncio.sleep(wait)
+                self._busy_until.clear()
+                continue
+            break
+        if isinstance(last, _Refused) and last.code == 429:
+            raise _Refused(429, last.detail)
         raise RuntimeError("Gemini's servers are overloaded right now; try again in a minute") from last
 
     def _skip_signatures(self):

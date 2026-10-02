@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ink Lotus</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#03060c;overflow:hidden}
+  canvas#stage{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+  #word{position:fixed;left:0;right:0;top:calc(50% + min(30vw,30vh));text-align:center;
+        font:600 13px 'Segoe UI',system-ui,sans-serif;letter-spacing:.5em;color:#8aa0b8;opacity:.75;
+        pointer-events:none;transition:color .8s}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="word">IDLE</div>
+<script src="../../core.js"></script>
+<script>
+"use strict";
+/* INK LOTUS — Jarvis's state as a slow ink lotus (Dr Wolf, Oct 2026).
+   idle: deep blue, closed bud, slow breath · listening: teal, opens towards you
+   thinking: violet, folds and swirls · speaking: warm white, pulses with the words
+   tools/hands: gold ring + a tick per action · waiting for ALLOW: steady amber
+   error: one slow red dip · phone hands: a small satellite circles.
+   Sound: no hum. Short soft tones only (bell, wooden tok, two-note chime). */
+AV.init({ sound: false });                       // no thinking.wav screech
+
+const cv = document.getElementById("stage"), cx = cv.getContext("2d");
+const word = document.getElementById("word");
+let W = 0, H = 0, DPR = 1;
+function size() { DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR; cx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+addEventListener("resize", size); size();
+
+const STYLE = {   // colour (rgb), petal openness, swirl speed
+  idle:      { c: [70, 110, 255],  open: 0.22, swirl: 0.04, word: "IDLE" },
+  listening: { c: [40, 230, 200],  open: 0.90, swirl: 0.06, word: "LISTENING" },
+  thinking:  { c: [160, 110, 255], open: 0.40, swirl: 0.35, word: "THINKING" },
+  speaking:  { c: [235, 190, 140], open: 0.72, swirl: 0.08, word: "SPEAKING" },
+  allow:     { c: [255, 180, 70],  open: 0.55, swirl: 0.00, word: "WAITING FOR YOUR ALLOW" },
+  error:     { c: [230, 60, 70],   open: 0.30, swirl: 0.02, word: "SOMETHING WENT WRONG" },
+};
+const cur = { c: [70, 110, 255], open: 0.22, swirl: 0.04 };
+let t = 0, rot = 0, gold = 0, ticks = [], errUntil = 0, lastTool = "", lastState = "idle";
+
+/* ---- what the dock shows (no extra wiring needed) ---- */
+const $ = id => document.getElementById(id);
+function allowShown() { const p = $("jv-perm"); return !!(p && p.classList.contains("show")); }
+function errorShown() { const e = $("jv-toast"); return !!(e && e.classList.contains("show") && !e.classList.contains("ok")); }
+function toolText() { const e = $("jv-tool"); return e ? e.textContent || "" : ""; }
+
+/* ---- soft sounds (WebAudio, very quiet) ---- */
+let AC = null;
+function ac() { if (!AC) try { AC = new AudioContext(); } catch (e) {} if (AC && AC.state === "suspended") AC.resume(); return AC; }
+addEventListener("pointerdown", ac, { once: true });
+function tone(freq, dur, gain, type = "sine", delay = 0) {
+  const a = ac(); if (!a) return;
+  const t0 = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+const SND = {
+  bell:  () => { tone(392, 0.9, 0.05); tone(784, 0.6, 0.015); },          // he starts listening
+  tok:   () => { tone(520, 0.07, 0.035, "triangle"); },                     // one action
+  done:  () => { tone(660, 0.35, 0.03); tone(880, 0.5, 0.03, "sine", 0.14); }, // finished
+  allow: () => { tone(523, 0.5, 0.035); },                                  // needs your ALLOW
+  err:   () => { tone(196, 0.8, 0.04); },                                   // something went wrong
+};
+
+/* ---- ink motes ---- */
+const motes = Array.from({ length: 70 }, () => ({ a: Math.random() * 6.283, r: Math.random(), s: 0.2 + Math.random() * 0.8, z: Math.random() }));
+
+function lerp(a, b, k) { return a + (b - a) * k; }
+function rgba(c, a) { return `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`; }
+
+function petal(R, ang, open, len, wid, col, alpha) {
+  // a petal from the centre: opening tilts it outward
+  const tip = R * len * (0.55 + 0.45 * open);
+  cx.save(); cx.rotate(ang);
+  const g = cx.createLinearGradient(0, 0, 0, -tip);
+  g.addColorStop(0, rgba(col, alpha * 0.9)); g.addColorStop(0.7, rgba(col, alpha * 0.35)); g.addColorStop(1, rgba(col, 0));
+  cx.fillStyle = g;
+  const w = R * wid * (0.35 + 0.65 * open);
+  cx.beginPath(); cx.moveTo(0, 0);
+  cx.bezierCurveTo(w, -tip * 0.35, w * 0.8, -tip * 0.85, 0, -tip);
+  cx.bezierCurveTo(-w * 0.8, -tip * 0.85, -w, -tip * 0.35, 0, 0);
+  cx.fill(); cx.restore();
+}
+
+function frame(dt) {
+  AV.tick(dt); t += dt / 1000;
+  /* which state to show: ALLOW and errors outrank the voice states */
+  const now = performance.now();
+  if (errorShown() && errUntil < now - 4000) { errUntil = now + 1800; SND.err(); }
+  let st = AV.state;
+  if (now < errUntil) st = "error";
+  if (allowShown()) st = "allow";
+  if (st !== lastState) {
+    if (st === "listening") SND.bell();
+    if (st === "allow") SND.allow();
+    if (lastState === "speaking" && st === "idle") SND.done();
+    lastState = st; const s = STYLE[st] || STYLE.idle;
+    word.textContent = s.word; word.style.color = rgba(s.c, 0.85);
+  }
+  const tt = toolText();
+  if (tt && tt !== lastTool && tt.startsWith("▸")) { gold = 1; ticks.push({ a: rot, life: 1 }); SND.tok(); }
+  lastTool = tt;
+  const phone = /phone/i.test(tt);
+
+  const S = STYLE[st] || STYLE.idle, k = Math.min(1, dt / 600);
+  for (let i = 0; i < 3; i++) cur.c[i] = lerp(cur.c[i], S.c[i], k);
+  cur.open = lerp(cur.open, S.open, k); cur.swirl = lerp(cur.swirl, S.swirl, k);
+  gold = Math.max(0, gold - dt / 2500);
+
+  const breath = 0.5 + 0.5 * Math.sin(t * 2 * Math.PI / 6);           // 6-second breath
+  const env = st === "speaking" ? AV.env : 0;
+  const ripple = st === "listening" ? 0.06 * Math.sin(t * 5) : 0;
+  const open = Math.min(1, cur.open + 0.08 * breath + 0.28 * env + ripple);
+  rot += cur.swirl * dt / 1000;
+
+  cx.globalCompositeOperation = "source-over";
+  cx.fillStyle = "rgba(3,6,12,0.32)"; cx.fillRect(0, 0, W, H);       // ink trails
+  const R = Math.min(W, H) * 0.28, X = W / 2, Y = H / 2 - Math.min(W, H) * 0.03;
+  cx.save(); cx.translate(X, Y); cx.globalCompositeOperation = "lighter";
+
+  // halo
+  const halo = cx.createRadialGradient(0, 0, 0, 0, 0, R * 1.6);
+  halo.addColorStop(0, rgba(cur.c, 0.20 + 0.15 * breath + 0.25 * env)); halo.addColorStop(1, rgba(cur.c, 0));
+  cx.fillStyle = halo; cx.beginPath(); cx.arc(0, 0, R * 1.6, 0, 6.283); cx.fill();
+
+  // motes drifting like ink in water
+  for (const m of motes) {
+    m.a += (0.05 + cur.swirl * 0.6) * m.s * dt / 1000;
+    const rr = R * (0.3 + 1.1 * m.r) * (0.9 + 0.1 * Math.sin(t * m.s + m.z * 6));
+    cx.fillStyle = rgba(cur.c, 0.10 + 0.25 * m.z);
+    cx.beginPath(); cx.arc(Math.cos(m.a) * rr, Math.sin(m.a) * rr, 0.8 + 1.8 * m.z, 0, 6.283); cx.fill();
+  }
+
+  // outer and inner petals (8 + 8)
+  for (let i = 0; i < 8; i++) petal(R, rot + i * Math.PI / 4, open, 1.0, 0.42, cur.c, 0.42);
+  for (let i = 0; i < 8; i++) petal(R, -rot * 0.7 + Math.PI / 8 + i * Math.PI / 4, open * 0.8, 0.68, 0.34, cur.c.map(v => Math.min(255, v + 30)), 0.42);
+
+  // heart
+  const core = cx.createRadialGradient(0, 0, 0, 0, 0, R * 0.22);
+  core.addColorStop(0, "rgba(255,255,255,0.85)"); core.addColorStop(1, rgba(cur.c, 0));
+  cx.fillStyle = core; cx.beginPath(); cx.arc(0, 0, R * (0.16 + 0.05 * breath + 0.08 * env), 0, 6.283); cx.fill();
+
+  // gold ring for tools/hands, with ticks
+  if (gold > 0.01) {
+    cx.strokeStyle = `rgba(255,200,90,${0.55 * gold})`; cx.lineWidth = 2;
+    cx.beginPath(); cx.arc(0, 0, R * 1.18, 0, 6.283); cx.stroke();
+    const ga = t * 1.6;
+    cx.fillStyle = `rgba(255,215,120,${0.9 * gold})`;
+    cx.beginPath(); cx.arc(Math.cos(ga) * R * 1.18, Math.sin(ga) * R * 1.18, 4, 0, 6.283); cx.fill();
+  }
+  ticks = ticks.filter(k2 => (k2.life -= dt / 900) > 0);
+  for (const k2 of ticks) {
+    cx.strokeStyle = `rgba(255,215,120,${0.6 * k2.life})`; cx.lineWidth = 1.5;
+    cx.beginPath(); cx.arc(0, 0, R * (1.18 + 0.25 * (1 - k2.life)), 0, 6.283); cx.stroke();
+  }
+  // phone satellite
+  if (phone) {
+    const pa = -t * 0.9;
+    cx.fillStyle = "rgba(255,200,90,0.9)";
+    cx.beginPath(); cx.arc(Math.cos(pa) * R * 1.45, Math.sin(pa) * R * 1.45, 5, 0, 6.283); cx.fill();
+  }
+  cx.restore();
+}
+
+if (AV.shot) AV.shotRun(frame);
+else { let last = performance.now();
+  const loop = n => { frame(Math.min(100, n - last)); last = n; requestAnimationFrame(loop); };
+  requestAnimationFrame(loop); }
+</script>
+</body>
+</html>

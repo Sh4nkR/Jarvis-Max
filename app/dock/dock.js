@@ -18,8 +18,8 @@
     return realFetch(input, init);
   };
 
-  const FACES = ["board", "radial", "rain", "neural"];
-  const FACE_NAMES = { board: "Circuit Board", radial: "Radial", rain: "Face in the Code", neural: "Neural Core" };
+  const FACES = ["living", "lotus", "board", "radial", "rain", "neural"];
+  const FACE_NAMES = { living: "Living Face", lotus: "Ink Lotus", board: "Circuit Board", radial: "Radial", rain: "Face in the Code", neural: "Neural Core" };
   const ICON = {
     mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>',
     send: '<svg viewBox="0 0 24 24"><path d="M4 12h14M13 6l6 6-6 6"/></svg>',
@@ -39,7 +39,14 @@
   };
 
   let ws = null, status = {}, voiceOn = true, camStream = null, rec = null;
+  // read-only hints for the Living Face (what he's saying, link state, camera)
+  window.JV_FACE = { reply: () => replyText || "", offline: () => status.brain === "offline", camera: () => !!camStream };
   let turnOpen = false, searchMode = false, replyText = "";
+  // Jarvis can be open on the PC and on the phone at once. The screen he asked from speaks;
+  // the other one shows the words silently (quietTurn).
+  let myId = null, quietTurn = false, phoneUrl = "";
+  const PHONE = matchMedia("(pointer: coarse)").matches;
+  const HINT = PHONE ? "Type to Jarvis" : "Type to Jarvis, press Enter";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   try { voiceOn = localStorage.getItem("jv_voice") !== "0"; } catch (e) {}
@@ -81,6 +88,7 @@
     if (playing || !queue.length) return;
     const item = queue.shift(), mine = gen;
     playing = { stop() {} };
+    speakT0 = 0;                                    // set when the sound actually starts
     setState("speaking");
     try {
       if (!voiceOn) {
@@ -94,6 +102,7 @@
           src.connect(analyser);
           src.onended = resolve;
           playing = { stop() { try { src.stop(); } catch (e) {} resolve(); } };
+          speakT0 = performance.now();
           src.start();
         });
       } else if (window.speechSynthesis && item.text) {
@@ -156,7 +165,9 @@
         <div class="jv-row">
           <button id="jv-talk" title="Talk (F2): click, speak, click again">${ICON.mic}<span>TALK</span></button>
           <button id="jv-free" title="Hands-free: Jarvis listens on its own and answers when you pause. Click again to turn it off.">${ICON.mic}<span>LISTEN</span></button>
-          <input id="jv-input" type="text" autocomplete="off" spellcheck="false" placeholder="Type to Jarvis, press Enter">
+          <button id="jv-add" title="Add pictures, PDFs or text files for Jarvis to read, remember and learn from">+</button>
+          <input id="jv-file" type="file" multiple hidden accept="image/*,.pdf,.txt,.md,.csv,.json,.html,.htm,.log,.xml">
+          <input id="jv-input" type="text" autocomplete="off" spellcheck="false" placeholder="${HINT}">
           <button id="jv-send">${ICON.send}SEND</button>
           <button id="jv-good" class="jv-verdict" title="That answer was right. Jarvis keeps doing it that way.">${ICON.up}</button>
           <button id="jv-bad" class="jv-verdict" title="That answer was wrong. Type what was wrong in the box first if you like; Jarvis learns from it tonight.">${ICON.down}</button>
@@ -177,6 +188,11 @@
       <div id="jv-panel"><header><span id="jv-ptitle">LOG</span><button id="jv-pclose">CLOSE</button></header><div class="jv-body" id="jv-pbody"></div></div>
       <div class="jv-card" id="jv-perm"><h2>PERMISSION NEEDED</h2><p>Jarvis wants to:</p><code id="jv-permtext"></code>
         <div class="btns"><button class="jv-yes" id="jv-allow">ALLOW</button><button class="jv-no" id="jv-deny">DENY</button></div></div>
+      <div class="jv-card" id="jv-repair"><h2>FIX PROPOSED BY CLAUDE OPUS</h2>
+        <p id="jv-repair-sum"></p><p class="jv-small" id="jv-repair-cause"></p>
+        <pre id="jv-repair-diff"></pre>
+        <p class="jv-small">Nothing changes unless you press ALLOW. Then Jarvis applies the fix; restart him and he checks everything again, keeping the fix only if every check passes.</p>
+        <div class="btns"><button class="jv-yes" id="jv-repair-yes">ALLOW: APPLY THE FIX</button><button class="jv-no" id="jv-repair-no">DENY</button></div></div>
       <div class="jv-card" id="jv-brains"><h2>CHOOSE THE BRAIN</h2>
         <div class="jv-brainopts" id="jv-brainopts"></div>
         <p class="jv-small">Jarvis restarts its brain to switch (about 10 seconds), then says which brain came up.</p></div>
@@ -198,6 +214,8 @@
     // Keys typed in the box belong to the box: the face uses Space, C and F as shortcuts.
     input.addEventListener("keydown", (e) => {
       e.stopPropagation();
+      // Samsung/Gboard keyboards are still "composing" a word (keyCode 229): sending then garbles the text
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") { e.preventDefault(); submit(); }
       if (e.key === "Escape") { e.preventDefault(); stopAll(); }
     });
@@ -215,7 +233,27 @@
 
     $("jv-talk").onclick = talk;
     $("jv-free").onclick = toggleListen;
+    // Inside the Jarvis Hands phone app, the PHONE does the mic and the typing (native Android),
+    // because the app's built-in browser blocks the web mic and garbles soft-keyboard typing.
+    const NATIVE = window.AndroidJarvis && /JarvisHands/.test(navigator.userAgent);
+    window.jvAsk = (t) => { t = (t || "").trim(); if (t) ask(t); };
+    window.jvNote = (t, kind) => toast(t, kind || "", 5000);
+    window.jvMic = (on) => { $("jv-talk").classList.toggle("lit", !!on); };
+    window.jvListen = (on) => { $("jv-free").classList.toggle("lit", !!on); };
+    if (NATIVE) {
+      $("jv-talk").onclick = () => AndroidJarvis.talk();
+      $("jv-free").onclick = () => AndroidJarvis.listen();
+      $("jv-input").readOnly = true;
+      $("jv-input").onclick = $("jv-input").onfocus = (e) => { e.target.blur(); AndroidJarvis.typeBox(); };
+      $("jv-send").onclick = () => AndroidJarvis.typeBox();
+    }
     $("jv-send").onclick = submit;
+    $("jv-add").onclick = () => $("jv-file").click();
+    $("jv-file").onchange = () => {
+      for (const f of $("jv-file").files) attached.push(f);
+      $("jv-file").value = "";
+      showAttached();
+    };
     $("jv-good").onclick = () => verdict(true);
     $("jv-bad").onclick = () => verdict(false);
     $("jv-camera").onclick = toggleCamera;
@@ -239,6 +277,9 @@
     $("jv-stop").onclick = stopAll;
     $("jv-pclose").onclick = () => $("jv-panel").classList.remove("open");
     $("jv-allow").onclick = () => answerPermission(true);
+    $("jv-repair-yes").onclick = () => answerRepair(true);
+    $("jv-repair-no").onclick = () => answerRepair(false);
+    $("jv-repair").addEventListener("keydown", (e) => e.stopPropagation());
     $("jv-deny").onclick = () => answerPermission(false);
     $("jv-signin-go").onclick = () => {
       send({ type: "signin" });
@@ -249,13 +290,21 @@
   }
 
   /* ---------------------------------------------------------- live link -- */
+  let pending = [];                                    // questions waiting for the link to come back
   function connect() {
-    ws = new WebSocket(`ws://${location.host}/ws`);
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";   // https page (the phone app) needs wss
+    ws = new WebSocket(`${proto}//${location.host}/ws`);
+    ws.onopen = () => {
+      const now = performance.now(), p = pending;
+      pending = [];
+      p.forEach((x) => { if (now - x.t < 20000) ws.send(JSON.stringify(x.obj)); });
+    };
     ws.onmessage = (ev) => { let d; try { d = JSON.parse(ev.data); } catch (e) { return; } onMessage(d); };
-    ws.onclose = () => { status.brain = "offline"; paint(); setTimeout(connect, 2000); };
+    ws.onclose = () => { status.brain = "offline"; paint(); setTimeout(connect, 1000); };
   }
   function send(obj) {
     if (ws && ws.readyState === 1) { ws.send(JSON.stringify(obj)); return true; }
+    if (obj.type === "ask") { pending.push({ obj, t: performance.now() }); return true; }   // goes when the link is back
     toast("Jarvis isn't running. Start it with Start-Jarvis-Max.bat.");
     return false;
   }
@@ -264,7 +313,8 @@
   function onMessage(d) {
     switch (d.type) {
       case "hello":
-        status = d.status || {}; history = d.history || []; paint(); refreshLog();
+        status = d.status || {}; history = d.history || []; myId = d.you || null; phoneUrl = d.phone_url || "";
+        paint(); refreshLog();
         if (restarting && !status.switching) {        // the new Jarvis, not the old one on its way out
           restarting = false; clearTimeout(restartT);
           $("jv-restart").classList.remove("show");
@@ -280,10 +330,12 @@
       case "announce":
         history.push({ who: "jarvis", text: d.text }); refreshLog();
         toast(d.text, "ok", 15000);
-        enqueue({ text: d.text, audio: d.audio });
+        if (!d.silent) enqueue({ text: d.text, audio: d.audio });
         break;
       case "status": status = d.status || {}; paint(); break;
       case "turn_start":
+        barged = false;
+        quietTurn = !!(d.speaker && myId && d.speaker !== myId);   // asked from the other screen
         turnOpen = true; replyText = ""; sawToolThisTurn = false;
         history.push({ who: "you", text: d.text });
         $("jv-you").textContent = "YOU: " + d.text + (d.pictures ? "  [+ picture]" : "");
@@ -293,12 +345,12 @@
       case "delta":
         replyText += d.text;
         // Dr Wolf's wish: Jarvis's replies are spoken, not written. Text shows only when muted.
-        $("jv-reply").textContent = voiceOn ? "" : replyText.slice(-420);
+        $("jv-reply").textContent = voiceOn && !quietTurn ? "" : replyText.slice(-420);
         refreshLog();
         break;
       case "tool": $("jv-tool").textContent = "▸ " + d.detail; sawToolThisTurn = true; break;
-      case "say": enqueue({ text: d.text, audio: d.audio }); break;
-      case "notice": enqueue({ text: d.text, audio: d.audio }); break;
+      case "say": if (!barged && !d.silent) enqueue({ text: d.text, audio: d.audio }); break;
+      case "notice": if (!d.silent) enqueue({ text: d.text, audio: d.audio }); break;
       case "turn_end":
         turnOpen = false; $("jv-tool").textContent = ""; projectMode = sawToolThisTurn;
         history.push({ who: "jarvis", text: replyText });
@@ -311,7 +363,11 @@
       case "permission_closed":
         if ($("jv-perm").dataset.id === d.id) $("jv-perm").classList.remove("show"); break;
       case "camera_request": cameraRequest(d.id); break;
+      case "behave": window.JV_BEHAVE = d; window.JV_VITALS = d.vitals; break;
+      case "repair": showRepair(d); break;
+      case "repair_closed": if ($("jv-repair").dataset.id === d.id) $("jv-repair").classList.remove("show"); break;
       case "cleared": history = []; replyText = ""; $("jv-you").textContent = ""; $("jv-reply").textContent = ""; refreshLog(); break;
+      case "log_note": history.push({ who: "jarvis", text: d.text }); refreshLog(); break;
       case "toast": toast(d.text, d.kind || "", d.kind === "ok" ? 15000 : 6000); break;
     }
   }
@@ -326,18 +382,66 @@
     c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
     return c.toDataURL("image/jpeg", 0.8).split(",")[1];
   }
+  /* ------------------------------------------------ the + button (files) -- */
+  let attached = [];
+  function showAttached() {
+    const b = $("jv-add"), n = attached.length;
+    b.textContent = n ? "+" + n : "+";
+    b.classList.toggle("lit", n > 0);
+    $("jv-input").placeholder = n ? `${n} file${n > 1 ? "s" : ""} added. Say what to do, or just SEND` : HINT;
+    if (n) toast("Added: " + attached.map(f => f.name).join(", "), "ok", 5000);
+  }
+  function shrinkImage(file) {                       // pictures also go straight to him, at a sensible size
+    return new Promise(res => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const s = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        res(c.toDataURL("image/jpeg", 0.85).split(",")[1]);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); res(null); };
+      img.src = url;
+    });
+  }
+  async function sendWithFiles(text) {
+    const files = attached; attached = []; showAttached();
+    toast(`Sending ${files.length} file${files.length > 1 ? "s" : ""} to Jarvis…`, "ok", 4000);
+    const saved = [], pics = [], failed = [];
+    for (const f of files) {
+      try {
+        const r = await realFetch("/api/upload?name=" + encodeURIComponent(f.name), { method: "POST", body: f });
+        const j = await r.json();
+        if (!j.ok) { failed.push(j.message || f.name); continue; }
+        saved.push(j.path);
+        if (f.type.startsWith("image/") && pics.length < 5) {
+          const d = await shrinkImage(f);
+          if (d) pics.push({ media_type: "image/jpeg", data: d });
+        }
+      } catch (e) { failed.push(f.name + " didn't upload"); }
+    }
+    if (failed.length) toast(failed.join(" · "), "err", 9000);
+    if (!saved.length) return;
+    const t = text || "Read these, and remember what matters.";
+    ask(`${t}\n\n[He added ${saved.length} file${saved.length > 1 ? "s" : ""} with the + button, saved in your vault: `
+        + saved.join(", ") + ". Read each one with Read.]", { images: pics });
+  }
+
   function ask(text, opts = {}) {
     stopAudio();
-    const images = [];
+    const images = (opts.images || []).slice();
     const f = currentFrame();
     if (f) images.push({ media_type: "image/jpeg", data: f });
     send({ type: "ask", text, images, screen: !!opts.screen });
   }
   function submit() {
     const input = $("jv-input"), t = input.value.trim();
+    if (attached.length) { input.value = ""; searchMode = false; input.placeholder = HINT; return sendWithFiles(t); }
     if (!t) return;
     input.value = "";
-    if (searchMode) { searchMode = false; input.placeholder = "Type to Jarvis, press Enter"; return doSearch(t); }
+    if (searchMode) { searchMode = false; input.placeholder = HINT; return doSearch(t); }
     ask(t);
   }
   function searchClick() {
@@ -400,13 +504,26 @@
   }
 
   /* ---------------------------------------------------------- hands-free -- */
-  // General chat gets a 3s thinking pause; a turn where Jarvis actually used tools
-  // (editing files, running commands — "building on a project") gets 5s, since those
-  // pauses tend to be him thinking something through rather than done talking.
-  const HF_START = 0.028, HF_STOP = 0.018, HF_HANGOVER_GENERAL_MS = 3000, HF_HANGOVER_PROJECT_MS = 5000;
+  // sir's wish: 2 seconds of quiet ends what he's saying, in every kind of turn.
+  const HF_START = 0.028, HF_STOP = 0.018, HF_HANGOVER_GENERAL_MS = 2000, HF_HANGOVER_PROJECT_MS = 2000;
   const HF_MIN_MS = 250, HF_MAX_MS = 45000;
+  // Barge-in: while Jarvis is speaking, sir talking over him (louder than Jarvis's own voice
+  // coming back through the mic, in 3 of the last 6 ticks: speech has gaps between syllables)
+  // cuts him off mid-sentence and starts listening.
+  const HF_BARGE_MIN = 0.05, HF_BARGE_WINDOW_MS = 600, HF_BARGE_HITS = 3, HF_ECHO_X = 2.0, HF_LEARN_MS = 1200;
   let listenOn = false, hfStream = null, hfAnalyser = null, hfData = null, hfRec = null;
   let hfChunks = [], hfSpeechStart = 0, hfSilenceSince = null, hfTimer = null;
+  // Echo: the mic also hears Jarvis's own voice from the speakers. The first time he speaks, the
+  // first 1.2 s teach how loud that echo is compared with his voice (hfK); after that, only
+  // sound clearly louder than the expected echo counts as sir talking.
+  let hfK = null, hfLearn = 0, hfOut = [], speakT0 = 0, hfLoud = [], barged = false;
+  const hfOutData = new Float32Array(analyser.fftSize);
+  function outLevel() {
+    analyser.getFloatTimeDomainData(hfOutData);
+    let sum = 0;
+    for (let i = 0; i < hfOutData.length; i++) sum += hfOutData[i] * hfOutData[i];
+    return Math.sqrt(sum / hfOutData.length);
+  }
   let sawToolThisTurn = false, projectMode = false;
 
   function hfLevel() {
@@ -426,7 +543,7 @@
       hfRec = null;
       paint();
       if (!listenOn || cancelled) return;                  // toggled off mid-stop
-      if (tooShort) { settle(); return; }
+      if (tooShort) { barged = false; settle(); return; }  // just a noise: let him carry on
       finishRecording(hfChunks, false);
     };
     hfRec.start();
@@ -438,26 +555,66 @@
   // A rAF loop would be paused by the browser the moment this window is minimized
   // or loses focus (sir wants LISTEN to keep working then), so this ticks off a
   // timer instead — browsers throttle background timers but don't freeze them.
+  function bargeIn() {
+    barged = true;                 // the rest of this answer stays unspoken
+    hfLoud = [];
+    stopAudio();
+    hfBeginUtterance();            // already listening to what he's saying
+  }
   function hfLoop() {
-    if (!listenOn) return;
-    const jarvisBusy = rec || turnOpen || playing || queue.length;
-    if (!jarvisBusy) {
-      const level = hfLevel();
-      const now = performance.now();
-      if (!hfRec) {
-        if (level > HF_START) hfBeginUtterance();
-      } else if (level > HF_STOP) {
+    if (!listenOn || rec) return;
+    const level = hfLevel();
+    const now = performance.now();
+    if (hfRec) {                   // he's talking: wait for 2 s of quiet
+      if (level > HF_STOP) {
         hfSilenceSince = null;
         if (now - hfSpeechStart > HF_MAX_MS) hfRec.stop();
       } else {
         if (hfSilenceSince === null) hfSilenceSince = now;
         else if (now - hfSilenceSince > (projectMode ? HF_HANGOVER_PROJECT_MS : HF_HANGOVER_GENERAL_MS)) hfRec.stop();
       }
+      return;
     }
+    if (playing || queue.length) { // Jarvis is speaking: listen for sir talking over him
+      if (!speakT0) return;        // still preparing the sound: nothing to compare yet
+      hfOut.push([now, outLevel()]);
+      hfOut = hfOut.filter((p) => now - p[0] <= 400);
+      const outMax = Math.max(0, ...hfOut.map((p) => p[1]));
+      if (hfK === null) {           // first time he speaks: learn the echo, don't cut in yet
+        if (now - speakT0 < HF_LEARN_MS) { if (outMax > 0.01) hfLearn = Math.max(hfLearn, level / outMax); return; }
+        hfK = hfLearn;
+      }
+      const gate = Math.max(HF_BARGE_MIN, hfK * outMax * HF_ECHO_X);
+      hfLoud = hfLoud.filter((t) => now - t <= HF_BARGE_WINDOW_MS);
+      if (level > gate) {
+        hfLoud.push(now);
+        if (hfLoud.length >= HF_BARGE_HITS) bargeIn();
+      } else if (outMax > 0.01) {   // keep the echo estimate current
+        const r = level / outMax;
+        if (r < hfK * 1.5 + 0.05) hfK = hfK * 0.95 + r * 0.05;
+      }
+      return;
+    }
+    hfLoud = []; hfOut = [];
+    if (!turnOpen && level > HF_START) hfBeginUtterance();
   }
+  let wakeLock = null;
+  async function keepScreenOn(on) {
+    if (!PHONE || !navigator.wakeLock) return;
+    try {
+      if (on && !wakeLock) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => { wakeLock = null; });
+      } else if (!on && wakeLock) { const w = wakeLock; wakeLock = null; await w.release(); }
+    } catch (e) { /* not allowed here: the phone may dim as usual */ }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && listenOn) keepScreenOn(true);
+  });
   async function toggleListen() {
     if (listenOn) {
       listenOn = false;
+      keepScreenOn(false);
       if (hfTimer) clearInterval(hfTimer);
       hfTimer = null;
       if (hfRec) { hfRec.cancelled = true; try { hfRec.stop(); } catch (e) {} hfRec = null; }
@@ -481,13 +638,14 @@
     src.connect(hfAnalyser);
     hfData = new Float32Array(hfAnalyser.fftSize);
     listenOn = true;
+    keepScreenOn(true);
     paint();
     hfTimer = setInterval(hfLoop, 100);
   }
 
   /* -------------------------------------------------------------- camera -- */
   async function cameraOn() {
-    camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 1280, height: 720 } });
     $("jv-cam").querySelector("video").srcObject = camStream;
     $("jv-cam").classList.add("on");
   }
@@ -519,16 +677,24 @@
     $("jv-pbody").innerHTML = html;
     $("jv-panel").classList.add("open");
   }
+  // Web addresses in the log become links that open in his normal browser (via Jarvis).
+  const linkify = (s) => esc(s).replace(/https?:\/\/[^\s<>"]+/g,
+    (u) => `<a class="jv-link" href="#" data-url="${u}">${u}</a>`);
   function logHtml() {
     const items = history.slice(-80);
     if (turnOpen) items.push({ who: "jarvis", text: replyText });
-    return items.map((m) => `<div class="jv-msg ${m.who === "you" ? "you" : ""}"><div class="who">${m.who === "you" ? "YOU" : "JARVIS"}</div><div class="txt">${esc(m.text)}</div></div>`).join("")
+    return items.map((m) => `<div class="jv-msg ${m.who === "you" ? "you" : ""}"><div class="who">${m.who === "you" ? "YOU" : "JARVIS"}</div><div class="txt">${linkify(m.text)}</div></div>`).join("")
       || "<p>Nothing said yet.</p>";
   }
   const LOG_BUTTONS = `<button class="jv-panelbtn" id="jv-new">START A FRESH CONVERSATION</button>` +
     `<button class="jv-panelbtn" id="jv-learn" title="Jarvis does this by himself every night">LEARN NOW: TODAY'S LESSONS AND SKILLS</button>`;
+  const phoneLine = () => phoneUrl && !PHONE
+    ? `<p class="jv-phone">ON YOUR PHONE (same Wi-Fi), open in Chrome: <b>${esc(phoneUrl)}</b></p>` : "";
   function wireLogButtons() {
     $("jv-new").onclick = () => { send({ type: "new_session" }); $("jv-panel").classList.remove("open"); };
+    $("jv-pbody").querySelectorAll("a.jv-link").forEach((a) => {
+      a.onclick = (e) => { e.preventDefault(); send({ type: "open_link", url: a.dataset.url }); toast("Opening it in your browser, sir.", "ok"); };
+    });
     $("jv-learn").onclick = async () => {
       try {
         const j = await (await realFetch("/api/grow", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json();
@@ -547,14 +713,14 @@
   }
   function openLog() {
     if ($("jv-panel").classList.contains("open") && $("jv-ptitle").textContent === "LOG") { $("jv-panel").classList.remove("open"); return; }
-    openPanel("LOG", logHtml() + LOG_BUTTONS);
+    openPanel("LOG", logHtml() + LOG_BUTTONS + phoneLine());
     $("jv-pbody").scrollTop = 1e9;
     wireLogButtons();
   }
   function refreshLog() {
     if ($("jv-panel").classList.contains("open") && $("jv-ptitle").textContent === "LOG") {
       const b = $("jv-pbody"), atEnd = b.scrollHeight - b.scrollTop - b.clientHeight < 40;
-      b.innerHTML = logHtml() + LOG_BUTTONS;
+      b.innerHTML = logHtml() + LOG_BUTTONS + phoneLine();
       wireLogButtons();
       if (atEnd) b.scrollTop = 1e9;
     }
@@ -570,6 +736,20 @@
       openPanel("MEMORY", `<button class="jv-panelbtn" id="jv-back">BACK</button><h3 style="font-weight:normal;color:var(--jv-gold)">${esc(j.path)}</h3><div class="jv-notetext">${esc(j.text)}</div>`);
       $("jv-back").onclick = openMemory;
     });
+  }
+  function showRepair(d) {
+    const card = $("jv-repair");
+    card.dataset.id = d.id;
+    $("jv-repair-sum").textContent = d.summary || "Claude changed my code.";
+    $("jv-repair-cause").textContent = (d.cause ? "Cause: " + d.cause + "  " : "") + "Files: " + (d.files || []).join(", ");
+    $("jv-repair-diff").innerHTML = (d.diff || "").split("\n").map((l) =>
+      `<span class="${l.startsWith("@@") ? "hunk" : l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : ""}">${esc(l)}</span>`).join("\n");
+    card.classList.add("show");
+  }
+  function answerRepair(allow) {
+    const card = $("jv-repair");
+    send({ type: "repair_reply", id: card.dataset.id, allow });
+    card.classList.remove("show");
   }
   function answerPermission(allow) {
     const card = $("jv-perm");

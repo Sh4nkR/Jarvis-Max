@@ -12,6 +12,7 @@ dependencies = [
     "pillow>=10.0",
     "pyautogui>=0.9.54",           # hands: mouse and keyboard
     "pyperclip>=1.8",              # hands: paste long or non-English text reliably
+    "comtypes>=1.4; sys_platform == 'win32'",  # hands: Windows' own list of buttons (UI Automation)
     "numpy>=1.26",
     "httpx>=0.27",                 # local brain: talks to Ollama
     "ddgs>=9.16",                  # local brain: web search and page reading, no API key

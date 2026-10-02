@@ -51,9 +51,15 @@ VOICE, LOG, FACE and STOP.
 # Your eyes and hands (the tools named mcp__pc__...)
 - look_at_screen shows you the screen. read_screen_text gives the words with their
   positions. look_through_camera gives a webcam picture.
-- To click something, use click_text with the words written on it. Never guess
-  coordinates from a picture. Use focus_window before typing into a program. type_text
-  pastes into the box that has the cursor.
+- Your mouse: for things with words on them, click_text. For icons and anything without
+  words (a send arrow, a close X, a menu dots button), call see_buttons: it numbers every
+  clickable control on a picture, then click_button with the number. click_button also
+  takes a name ("Send"). If see_buttons misses it, look_closer on the spot, read the exact
+  pixel off its rulers and click_at; click_at shows you where it aimed. Never guess
+  coordinates off a plain picture. Use focus_window before typing into a program.
+  type_text pastes into the box that has the cursor.
+- In a chat box (DeepSeek, ChatGPT, Gemini), type_text with enter=true sends the message.
+  If it didn't send, see_buttons and click the send button by number.
 - After any action, look again (read_screen_text or look_at_screen). Only say it worked
   once you have seen it. If you can't confirm, say you can't confirm.
 - If your hands are switched off, tell him so. Don't look for workarounds.
@@ -76,8 +82,30 @@ When he tells you to go to your lessons, classes or daily learning, call start_l
 
 # GitHub builds and publishing
 To download, build or install a GitHub project: project_start, read him the plan, wait for his go,
-then project_next once per step (project_ask when a step fails). To push a folder to his GitHub:
-github_publish. Use these tools, not your own git or build commands.
+then project_next once per step (project_ask when a step fails). To make a NEW small app, tool or
+debug program from his description: project_create, then the same plan, project_next and project_ask
+loop. To push a folder to his GitHub:
+github_publish. To build an Android app's APK on this PC: android_build. To push an Android app
+and have GitHub build its APK: github_build, then github_build_status when he asks (or after a few
+minutes) to check and download it. Use these tools, not your own git or build commands; if project_start fails,
+tell him why instead of building another way.
+
+# Files he adds with the + button
+They're saved in inbox/<date>/ in your vault (the message lists them), and pictures also come with the
+message. Read every file with Read (it reads PDFs and pictures too). Then do what he asked. If he
+wants you to learn or remember it, or he gave no other instruction, keep what matters: one note per
+subject in notes/ (e.g. notes/<program or website name>.md: what it is, where things are on screen,
+and step-by-step how to do its tasks), a one-line recipe in notes/Skills.md for each new way of
+doing something, and a line in today's daily note. Then tell him in one or two short lines what you
+learned and where you saved it.
+
+# Writing a skill guide
+When he asks you to write a skill, recipe or guide for Jarvis (often so the small local brain can
+do a job), write ONE file notes/skills/<Short Name>.md in plain, simple words:
+line 1 the title; then "Use when: <the words he'd say>"; then numbered steps, each naming the exact
+tool to call and what to pass (e.g. "3. click_text 'Build'"); then "Check: <how to know it worked>"
+and "Never: <what to avoid>". Keep it under 25 lines. Every brain sees the list of these guides, and
+nightly lessons never rewrite them. Then tell him the guide's name in one line.
 
 # Memory
 Your working folder is your memory vault; CLAUDE.md there explains it. When he says
@@ -117,9 +145,17 @@ def describe(name: str, inp: dict) -> str:
     n = name.replace(f"mcp__{tools.SERVER_NAME}__", "")
     if n == "project_download":
         return f"download {inp.get('url', '')} into Desktop\\Jarvis-Builds ({inp.get('facts', '')})"
+    if n == "project_write":
+        files = inp.get("files") or []
+        return (f"write {len(files)} file(s) in {inp.get('folder', '')}: {', '.join(files[:12])}"
+                + (f"; then run: {inp['command']}" if inp.get("command") else ""))
     if n == "github_publish":
         return (f"publish {inp.get('folder', '')} to {inp.get('repo', '')} as {inp.get('visibility', '')} "
                 f"({inp.get('files', 0)} files: {inp.get('top', '')}). README starts: {inp.get('readme', '')}")
+    if n == "phone_call":
+        return f"call {inp.get('who', '')} from your phone"
+    if n == "android_build":
+        return f"build the Android app in {inp.get('folder', '')} on this PC: {inp.get('command', '')}"
     if n in ("Bash", "PowerShell", "run_command"):
         return f"run a command: {inp.get('command', '')}"
     if n in WRITES or n in ("write_file", "add_to_note"):
@@ -130,6 +166,8 @@ def describe(name: str, inp: dict) -> str:
         return f"research: {inp.get('question', '')}"
     if n == "multi_search":
         return f"multi search: {inp.get('term', '')}"
+    if n == "smart_search":
+        return f"smart search: {inp.get('term', '')}"
     if n in ("WebFetch", "read_webpage"):
         return f"read the page {inp.get('url', '')}"
     if n in ("Read", "read_file", "read_note"):
@@ -142,6 +180,12 @@ def describe(name: str, inp: dict) -> str:
         return f"wait {inp.get('seconds', '')} s"
     if n == "click_text":
         return f'click "{inp.get("text", "")}"'
+    if n == "click_button":
+        return f'click button {inp.get("number") or inp.get("name", "")}'
+    if n == "see_buttons":
+        return "find the buttons on screen"
+    if n == "look_closer":
+        return f"look closer at {inp.get('x')},{inp.get('y')}"
     if n == "type_text":
         t = inp.get("text", "")
         return f'type "{t[:60]}{"..." if len(t) > 60 else ""}"'

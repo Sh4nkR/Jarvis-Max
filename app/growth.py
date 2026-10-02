@@ -24,7 +24,7 @@ import uuid
 
 import httpx
 
-from common import LOGS, MEMORY, load_config
+from common import LOGS, MEMORY, load_config, read_secret
 
 log = logging.getLogger("jarvis.growth")
 
@@ -38,13 +38,14 @@ TESTS = GROW / "tests.json"
 STATE = GROW / "state.json"
 REPORTS = GROW / "reports"
 ARCHIVE = GROW / "archive"
-PROMPT_CAP = 2500                           # chars of lessons / of skills fed to the brains
+PROMPT_CAP = 3000                          # chars of lessons / of skills fed to the brains
 MAX_LESSONS, MAX_SKILLS = 25, 15
 
 # His real requests and the first tool a good answer uses ("none" = just answer).
 SEED_TESTS = [
     ("I want you to research the best attacking formation in EA FC 26.", ["research", "web_search"]),
     ("Multi search Ada Lovelace.", ["multi_search"]),
+    ("Smart search best budget gaming mouse.", ["smart_search"]),
     ("What's the latest news in Delhi today?", ["research", "web_search"]),
     ("Open the browser and go to DeepSeek and type there best attacking formation.", ["open_url"]),
     ("Look at my screen and tell me what's on it.", ["look_at_screen", "read_screen_text"]),
@@ -154,15 +155,96 @@ def status_line() -> str:
 def prompt_addon() -> str:
     """Lessons, skills and the last lesson's result, for the brains' instructions."""
     parts = [status_line()]
+    try:
+        import wisdom
+        parts.append(wisdom.prompt_part())          # wisdom first: character before rules
+    except Exception:
+        pass
     if (lessons := _body(LESSONS)):
         parts.append("# Lessons you've learned (follow them)\n" + lessons)
     if (skills := _body(SKILLS)):
         parts.append("# Your skills (step-by-step recipes that worked before)\n" + skills)
+    guides = []
+    for p in sorted((NOTES / "skills").glob("*.md")):          # hand-written guides; lessons never rewrite them
+        try:
+            lines = [l.strip() for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+        except OSError:
+            continue
+        title = lines[0].lstrip("# ").strip() if lines else p.stem
+        when = next((l.split(":", 1)[1].strip() for l in lines if l.lower().startswith("use when:")), "")
+        guides.append(f"- {title}" + (f" (use when: {when})" if when else "") + f": notes/skills/{p.name}")
+    try:
+        import samasa
+        if (leg := samasa.legend()):
+            parts.append("# Samasa codewords (call the samasa tool: one call = the whole sequence; "
+                         "prefer it over doing the same steps one by one)\n" + leg)
+    except Exception:
+        pass
+    if guides:
+        parts.append("# Skill guides (before doing one of these jobs, read its guide with read_note or "
+                     "Read, then follow its steps exactly)\n" + "\n".join(guides[:40]))
     return ("\n\n" + "\n\n".join(parts)) if parts else ""
 
 
-# ------------------------------------------------------------ talking to Qwen ----
+# ------------------------------------------------ the writing brain for lessons ----
+# The lessons, skills and note tidying are written by Gemini Flash-Lite when a Gemini key is saved
+# (free and much better at writing than the local model); Qwen does it if Gemini fails or isn't set.
+# "lessons_brain": "qwen" in jarvis.json keeps it all local.
+GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models"
+
+
+async def _gemini(prompt: str, want_json: bool):
+    key = read_secret("gemini_key.txt")
+    cfg = load_config()
+    if not key or (cfg.get("lessons_brain") or "gemini").lower() != "gemini":
+        return None
+    body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.2}}
+    if want_json:
+        body["generationConfig"]["responseMimeType"] = "application/json"
+    models = [cfg.get("lessons_model") or "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest"]
+    async with httpx.AsyncClient(timeout=httpx.Timeout(180, connect=10)) as c:
+        for m in dict.fromkeys(models):
+            for attempt in range(2):
+                r = await c.post(f"{GEMINI_API}/{m}:generateContent", json=body,
+                                 headers={"x-goog-api-key": key, "Content-Type": "application/json"})
+                if r.status_code == 429 and attempt == 0 and "PerDay" not in r.text:
+                    await asyncio.sleep(61)          # the free key's per-minute limit
+                    continue
+                break
+            if r.status_code != 200:
+                log.info("lessons: gemini %s answered %s, trying the next", m, r.status_code)
+                continue
+            parts = ((r.json().get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+            text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+            if text:
+                log.info("lessons: written by %s", m)
+                return text
+    return None
+
+
 async def _qwen(prompt: str, want_json: bool = True, max_chars: int = 30000):
+    try:
+        text = await _gemini(prompt[:max_chars], want_json)
+    except Exception as e:
+        log.info("lessons: gemini failed (%s), using the local brain", e)
+        text = None
+    if text is not None:
+        if not want_json:
+            return text
+        try:
+            return json.loads(text)
+        except ValueError:
+            m = re.search(r"\{.*\}", text, re.S)
+            if m:
+                try:
+                    return json.loads(m.group(0))
+                except ValueError:
+                    pass
+    return await _local(prompt, want_json, max_chars)
+
+
+async def _local(prompt: str, want_json: bool = True, max_chars: int = 30000):
     cfg = load_config()
     body = {"model": cfg.get("local_model") or "qwen3.5:9b", "stream": False, "think": False,
             "keep_alive": "30m", "options": {"num_ctx": int(cfg.get("local_ctx") or 12288), "temperature": 0.2},
@@ -381,6 +463,11 @@ class Growth:
         if skills is not None:
             _write_list(SKILLS, "Skills", skills, "Jarvis's recipes, merged and rewritten daily.")
         notes_done = await self._rewrite_notes(since)
+        try:
+            import samasa
+            log.info("samasa: %d repeating sequences proposed", samasa.mine())
+        except Exception as e:
+            log.info("samasa mining skipped: %s", e)
 
         # 4. the test sheet decides whether today's lessons and skills stay
         changed = lessons is not None or skills is not None
@@ -392,6 +479,20 @@ class Growth:
                     shutil.copy2(arch / p.name, p)
                 elif p.exists():
                     p.unlink()
+        # 5. knowledge + time = wisdom; and one sutra for the day
+        wise_n, sutra = 0, ""
+        try:
+            import wisdom
+            wisdom.ensure_files()
+            mature = wisdom.track(_bullets([l[2:] for l in LESSONS.read_text(encoding="utf-8").splitlines() if l.startswith("- ")]) if LESSONS.exists() else [])
+            if mature:
+                got = _bullets((await _qwen(wisdom.WISE_PROMPT.format(items="\n".join(f"- {m}" for m in mature)))).get("wisdom"))
+                wise_n = wisdom.add_wisdom(got)
+            if turns:
+                sutra = str((await _qwen(wisdom.SUTRA_PROMPT.format(items=_items(turns, 30)))).get("sutra") or "")[:200]
+                wisdom.add_sutra(sutra)
+        except Exception as e:
+            log.info("wisdom step skipped: %s", e)
         # jobs he marked GOOD become new tests (only with tools the local brain has)
         from local_brain import tool_specs
         names = {s["function"]["name"] for s in tool_specs()}
@@ -411,6 +512,7 @@ class Growth:
                   f"- Now: {n_lessons} lessons, {n_skills} skills; memory notes rewritten: {notes_done}\n"
                   f"- Test score: {before[0]}/{before[1]} before, {after[0]}/{after[1]} after"
                   f" -> {'kept' if kept else 'ROLLED BACK (score dropped)'}\n"
+                  + (f"- New wisdom: {wise_n}\n" if wise_n else "") + (f"- Today's sutra: {sutra}\n" if sutra else "")
                   + "".join(f"- Missed: {m}\n" for m in (after[2] if kept else before[2])[:15]))
         REPORTS.mkdir(parents=True, exist_ok=True)
         (REPORTS / f"{today}.md").write_text(report, encoding="utf-8")
@@ -445,7 +547,7 @@ class Growth:
     async def _rewrite_notes(self, since: float) -> int:
         done = 0
         for p in sorted(NOTES.glob("*.md")):
-            if p in (LESSONS, SKILLS) or p.stat().st_mtime <= since:
+            if p in (LESSONS, SKILLS) or p.name in ("Wisdom.md", "Sutras.md") or p.stat().st_mtime <= since:
                 continue                            # only notes that changed since last time
             text = p.read_text(encoding="utf-8")
             if len(text) < 80:

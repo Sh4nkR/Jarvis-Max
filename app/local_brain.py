@@ -43,7 +43,7 @@ IMAGE_WIDTH = 1024
 MAX_ROUNDS = 16                     # tool steps per request
 # After these, the local brain gets the screen's words a moment later (seconds to wait), so
 # a small model sees the result of its action without having to remember to look.
-LOOK_AFTER = {"open_url": 4, "open_app": 3, "click_text": 1.5, "click_at": 1.5}
+LOOK_AFTER = {"open_url": 4, "open_app": 3, "click_text": 1.5, "click_at": 1.5, "click_button": 1.5}
 LOOK_CHARS = 2500
 _NOWIN = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
 
@@ -66,18 +66,25 @@ asks. Before a slow job say one short line first, like "One moment, sir."
   dexerto.com". For a quick list of links use web_search. To read one page, read_webpage.
 - "multi search <thing>": call multi_search, then give a two or three sentence summary
   and name the standout link.
+- "smart search <thing>": call smart_search once (it opens the five tabs itself; don't
+  open_url them). Then say in two or three sentences which site won, how many of the five
+  engines agreed, and what it says. The links are in his LOG panel; don't read addresses.
 - Timeless things (maths, definitions, general knowledge) you can answer yourself.
 - To show him a site: open_url (it opens his normal browser by itself; never open_app a
   browser first). To search in his browser: open_url with
   https://www.google.com/search?q=<words joined by +>.
 - open_url, open_app, click_text and type_text show you the screen's words a moment
   afterwards, so you see what happened without an extra step.
-- To type into a website or app: open_url or open_app; then click_text on the box's grey
-  hint words (like "Message DeepSeek", "Ask anything", "Search"), never a heading or a
-  button such as "New chat"; then type_text with enter=true. Then tell him what the page
-  now shows, and read out the answer if one appeared. If it's still loading, wait 5 and
-  read_screen_text.
-- To click, use click_text with the words written on the thing. Never guess coordinates.
+- To type into a website or app: open_url or open_app; then type_text with into = the box's
+  grey hint words (like "Message DeepSeek", "Ask anything", "Search") and enter=true. It
+  clicks the box, types, and tells you whether the text really appeared.
+- To read an answer or a long page: read_whole_page. After asking DeepSeek, ChatGPT or any
+  chat site, ALWAYS call read_whole_page with start_after = your question: it waits for the
+  answer to finish, scrolls through it and reads all of it. Then tell him the whole answer
+  (in short), never just the first screen.
+- To click, use click_text with the words written on the thing. For an icon with no words
+  (like a round send arrow), call see_buttons, then click_button with the number on it.
+  Never guess coordinates.
 - Only say something worked once the screen shows it.
 - If a tool says your hands are off, tell him; don't look for a way round it.
 - Files: list_folder, read_file, write_file. Commands: run_command (PowerShell); he
@@ -92,8 +99,20 @@ asks. Before a slow job say one short line first, like "One moment, sir."
   call project_next once per step and say one short line after each. If a step fails or you're
   unsure, call project_ask (the consultant AI) and carry on with project_next. If project_ask
   says stop, stop and tell him what's stuck. project_status shows the checklist.
+  If project_start fails, tell him why and stop: never download or build it yourself with
+  run_command, because then there's no checklist and no consultant.
+- Making a NEW app (pen and paper too): when he asks you to make, create or write a small app,
+  tool, script or debug/test program, call project_create with his idea in his words (ask one
+  short question first only if you don't know what it should do). The consultant writes the
+  code and the checklist. Read him the plan in short lines, wait for his go, then the same
+  loop: project_next once per step; when a step fails, project_ask (it can see and fix the
+  code) and carry on. Never write the app's code yourself with write_file or run_command.
+  When it's done, tell him how to start it (the plan says). To put it on GitHub afterwards,
+  github_publish with its folder.
 - Publishing: when he asks to push or upload a folder to GitHub, call github_publish with the
   folder and repo name. Never run git commands yourself for this.
+- Android APKs: to build one on this PC, android_build with the app's folder. To have GitHub
+  build it, github_build (folder + repo), then github_build_status to check and download it.
 - Memory: list_notes, read_note, add_to_note. When he says "remember", add it to the right
   note in notes/ and a line to today's daily note, daily/YYYY-MM-DD.md.
 
@@ -253,6 +272,10 @@ async def _multi_search(args):
     return await web.multi_search((args.get("term") or "").strip())
 
 
+async def _smart_search(args):
+    return await web.smart_search((args.get("term") or "").strip())
+
+
 async def _wait(args):
     s = max(0.5, min(float(args.get("seconds") or 2), 15))
     await asyncio.sleep(s)
@@ -272,6 +295,10 @@ LOCAL_TOOLS = {
     "read_webpage": (_read_webpage, "Read the text of one web page.", S({"url": STR}, ["url"]), False),
     "multi_search": (_multi_search, "Dr Wolf's 'multi search' skill: searches Google, DuckDuckGo, "
                      "Bing, Yahoo and Reddit, top two results from each, and reads the top pages.",
+                     S({"term": STR}, ["term"]), False),
+    "smart_search": (_smart_search, "Dr Wolf's 'smart search' skill: opens Google, DuckDuckGo, Bing, "
+                     "Yahoo and Reddit tabs, compares their top two results, picks the one most "
+                     "engines agree on, reads it and puts the links in his LOG panel.",
                      S({"term": STR}, ["term"]), False),
     "wait": (_wait, "Wait a few seconds, e.g. for a page or app to load.",
              S({"seconds": {"type": "number"}}, ["seconds"]), False),

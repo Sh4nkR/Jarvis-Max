@@ -223,3 +223,83 @@ async def multi_search(term: str) -> str:
             lines += [f"({_host(url)}) {url}", text, ""]
     lines.append("Now give him two or three sentences, and name the standout link if there is one.")
     return "\n".join(lines).strip()
+
+
+# ------------------------------------------------------------------------ smart search ----
+LOG_HOOK = None            # set by the server: async fn(text) that puts a note in his LOG panel
+SMART_TABS = [("Google", "https://www.google.com/search?q={q}"),
+              ("DuckDuckGo", "https://duckduckgo.com/?q={q}"),
+              ("Bing", "https://www.bing.com/search?q={q}"),
+              ("Yahoo", "https://search.yahoo.com/search?p={q}"),
+              ("Reddit", "https://www.reddit.com/search/?q={q}")]
+
+
+def _key(url: str) -> str:
+    """One page, however each engine spells its address."""
+    u = urlparse(url)
+    host = re.sub(r"(^|\.)m\.", r"\1", _host(url))       # en.m.wikipedia.org = en.wikipedia.org
+    return host + u.path.rstrip("/").lower()
+
+
+def _open_tabs(term: str):
+    import webbrowser
+    from urllib.parse import quote_plus
+    for _, pattern in SMART_TABS:
+        webbrowser.open_new_tab(pattern.format(q=quote_plus(term)))
+
+
+async def smart_search(term: str) -> str:
+    """Dr Wolf's 'smart search': five tabs open in his browser (Google, DuckDuckGo, Bing, Yahoo,
+    Reddit); the top two of each are compared, and the result most engines agree on wins."""
+    if not term:
+        return "Smart search needs something to search for."
+    try:
+        await asyncio.to_thread(_open_tabs, term)
+    except Exception as e:
+        log.info("smart search: couldn't open the tabs (%s)", e)
+
+    async def one(label, backend, extra):
+        try:
+            return label, await asyncio.wait_for(search(term + extra, 2, backend), 20)
+        except Exception:
+            return label, []
+    done = await asyncio.gather(*(one(*m) for m in MULTI))
+
+    pages, sites = {}, {}                  # same page / same site -> which engines listed it
+    for label, rows in done:
+        for rank, r in enumerate(rows):
+            p = pages.setdefault(_key(r["url"]), {"row": r, "engines": set(), "rank": 0})
+            p["engines"].add(label)
+            p["rank"] += rank
+            sites.setdefault(_host(r["url"]), set()).add(label)
+    if not pages:
+        return f"None of the five engines returned anything for “{term}”."
+    # most engines agree on the page, then on the site, then the higher-ranked one
+    best = max(pages.values(), key=lambda p: (len(p["engines"]), len(sites[_host(p["row"]["url"])]),
+                                              -p["rank"] / len(p["engines"])))
+    win = best["row"]
+    agree = best["engines"] if len(best["engines"]) > 1 else sites[_host(win["url"])]
+    read = await _read_some([win] + [p["row"] for p in pages.values() if p is not best], term, 2, 900)
+    body = read.get(win["url"]) or win["snippet"]
+
+    others = [p["row"] for p in pages.values() if p is not best][:9]
+    note = [f"SMART SEARCH: {term}",
+            f"Top result ({len(agree)} of 5 engines: {', '.join(sorted(agree))}):",
+            f"{win['title']}", win["url"], "", "Other results:"]
+    note += [f"- {r['title'][:90]} ({_host(r['url'])}) {r['url']}" for r in others]
+    if LOG_HOOK:
+        try:
+            await LOG_HOOK("\n".join(note))
+        except Exception as e:
+            log.info("smart search: couldn't write the log (%s)", e)
+
+    lines = [DATA_ONLY, f"Smart search for “{term}”. Five tabs are open in his browser. The winner, "
+             f"listed by {len(agree)} of 5 engines ({', '.join(sorted(agree))}):",
+             f"{win['title']} ({_host(win['url'])})", win["url"], body, ""]
+    extra = [(u, t) for u, t in read.items() if u != win["url"]]
+    for u, t in extra:
+        lines += [f"Also read ({_host(u)}):", t, ""]
+    lines.append("The links are already in his LOG panel. Now tell him in two or three short "
+                 f"sentences: the top result is from {_host(win['url'])}, how many engines agreed, "
+                 "and what it says. Don't read out web addresses.")
+    return "\n".join(lines).strip()

@@ -5,26 +5,30 @@
   /state, /config                 what the face reads (same contract as ai-visualizer)
   /api/...                        speech-to-text, status, memory notes
 
-Only this PC can reach it (127.0.0.1), and only the Jarvis window itself may
-talk to it: every live connection and every POST must come from this page.
-Other websites open in your browser are refused.
+This PC and his phone on the same home Wi-Fi can open it ("phone_access" in jarvis.json).
+Only Jarvis's own page may talk to it: every live connection and every POST must come from
+that page. Other websites open in a browser are refused.
 """
 import asyncio
 import base64
+import ipaddress
 import json
 import os
 import re
 import shutil
+import socket
+import ssl
 import subprocess
 import sys
 import time
 import urllib.request
 import uuid
 import webbrowser
+from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from common import (APP, BRAINS, CFG, IS_WIN, LOGS, MEMORY, ROOT, SWITCH_NOTE, brain_choice,
+from common import (APP, BRAINS, CFG, IS_WIN, LOGS, MEMORY, ROOT, SECRETS, SWITCH_NOTE, brain_choice,
                     load_config, pretty_model, save_brain, save_secret, setup_logging)
 
 log = setup_logging()
@@ -42,31 +46,170 @@ from local_brain import Hybrid, LocalBrain      # noqa: E402
 from gemini_brain import KEY_FILE, GeminiBrain, pretty as gemini_pretty  # noqa: E402
 import growth                                   # noqa: E402
 import builder                                  # noqa: E402
+import selftest                                 # noqa: E402
+import phonehands                               # noqa: E402
+import behaviour                                # noqa: E402
 
 PORT = int(CFG["port"])
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 ORIGINS = {f"http://{h}" for h in HOSTS}
+PHONE = bool(CFG.get("phone_access", True))        # his phone on the same Wi-Fi may open Jarvis too
+TLS_PORT = PORT + 1                                # the Jarvis Hands app connects here over HTTPS
 FACE_DIR = (APP / "face").resolve()
 DOCK_DIR = (APP / "dock").resolve()
-FACES = ["board", "radial", "rain", "neural"]
-INJECT = ('<link rel="stylesheet" href="/dock/dock.css">\n'
+FACES = ["living", "lotus", "board", "radial", "rain", "neural"]
+INJECT = ('<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, '
+          'viewport-fit=cover, interactive-widget=resizes-content">\n'
+          '<meta name="theme-color" content="#020705">\n'
+          '<link rel="manifest" href="/dock/manifest.json">\n'
+          '<link rel="stylesheet" href="/dock/dock.css">\n'
           '<script src="/dock/dock.js"></script>\n')
+
+
+def host_ok(host: str) -> bool:
+    """Jarvis answers only to his own address: this PC, or a home-network address typed as numbers
+    (the phone). A website's name made to point at Jarvis (the DNS-rebinding trick) never matches."""
+    if host in HOSTS:
+        return True
+    if not PHONE:
+        return False
+    ip, _, port = (host or "").rpartition(":")
+    if port != str(PORT):
+        return False
+    try:
+        return ipaddress.ip_address(ip).version == 4 and ipaddress.ip_address(ip).is_private
+    except ValueError:
+        return False
+
+
+def origin_ok(request) -> bool:
+    """Only Jarvis's own page (on the PC or the phone) may connect or change things."""
+    o = request.headers.get("Origin")
+    if o is None:
+        return False
+    return o in ORIGINS or o == f"http://{request.host}" or o == f"https://{request.host}"
+
+
+def lan_ip() -> str | None:
+    """This PC's address on the home Wi-Fi: the one his phone opens."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))                  # only picks the route; nothing is sent
+        ip = s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+    a = ipaddress.ip_address(ip)
+    return ip if a.is_private and not a.is_loopback else None
+
+
+def _tls_context():
+    """A self-signed certificate (made once, kept in secrets/, never pushed) so the phone app can
+    reach Jarvis over HTTPS. A browser's microphone only works on an https page; the app trusts
+    this one certificate for the PC's own address. Nothing leaves the home Wi-Fi; no password is
+    ever sent over it."""
+    crt, key = SECRETS / "jarvis-lan.crt", SECRETS / "jarvis-lan.key"
+    try:
+        if not (crt.exists() and key.exists()):
+            _make_cert(crt, key)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(crt), str(key))
+        return ctx
+    except Exception:
+        log.exception("couldn't set up the phone's HTTPS certificate")
+        return None
+
+
+def _make_cert(crt, key):
+    import datetime
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+    SECRETS.mkdir(parents=True, exist_ok=True)
+    (SECRETS / ".gitignore").write_text("*\n", encoding="utf-8")
+    k = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Jarvis on this PC")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    alts = [x509.DNSName("localhost"), x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]
+    ip = lan_ip()
+    if ip:
+        alts.append(x509.IPAddress(ipaddress.ip_address(ip)))
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
+            .public_key(k.public_key()).serial_number(x509.random_serial_number())
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=3650))
+            .add_extension(x509.SubjectAlternativeName(alts), critical=False)
+            .sign(k, hashes.SHA256()))
+    key.write_bytes(k.private_bytes(serialization.Encoding.PEM,
+                                    serialization.PrivateFormat.TraditionalOpenSSL,
+                                    serialization.NoEncryption()))
+    crt.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+
+
+def network_kind() -> str:
+    """Private or Public: Windows keeps phones out of a Wi-Fi it calls Public."""
+    if not IS_WIN:
+        return ""
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                            "(Get-NetConnectionProfile | Select-Object -First 1).NetworkCategory"],
+                           capture_output=True, text=True, timeout=20, creationflags=0x08000000)
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def keep_awake():
+    """While Jarvis runs, the PC doesn't go to sleep (the screen may still switch off), so the
+    phone can always reach him. Windows undoes it by itself the moment Jarvis closes."""
+    if IS_WIN and CFG.get("keep_awake", True):
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
+        log.info("keeping the PC awake while Jarvis runs")
+
+
+PHONE_URL = ""
 
 
 # ------------------------------------------------------------------ hub ----
 class Hub:
     def __init__(self):
         self.clients: set[web.WebSocketResponse] = set()
+        self.ids: dict[web.WebSocketResponse, str] = {}
+        self.where: dict[web.WebSocketResponse, str] = {}
+        self.active: web.WebSocketResponse | None = None   # the screen he last asked from: it speaks
         self.history: list[dict] = []
         self.perms: dict[str, asyncio.Future] = {}
         self.cams: dict[str, asyncio.Future] = {}
+        self.repairs: dict[str, asyncio.Future] = {}
+        self.pending_repair: dict | None = None     # a proposed fix waiting for his ALLOW / DENY
         self.state = "idle"
 
-    async def send(self, obj: dict):
+    async def send(self, obj: dict, only: web.WebSocketResponse | None = None):
         dead = []
         for ws in list(self.clients):
+            if only is not None and ws is not only:
+                continue
             try:
                 await ws.send_json(obj)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.clients.discard(ws)
+
+    def speaker(self) -> web.WebSocketResponse | None:
+        return self.active if self.active in self.clients else None
+
+    async def send_voice(self, obj: dict):
+        """Jarvis's voice plays on the screen he's using (PC or phone); the others show the
+        words silently, so two speakers never talk over each other."""
+        target, dead = self.speaker(), []
+        for ws in list(self.clients):
+            o = obj if target is None or ws is target else {**obj, "audio": None, "silent": True}
+            try:
+                await ws.send_json(o)
             except Exception:
                 dead.append(ws)
         for ws in dead:
@@ -80,6 +223,7 @@ class Hub:
 HUB = Hub()
 EARS = Ears()
 MOUTH = Mouth()
+tools.STATE.voice_switcher = MOUTH.set_style
 
 
 def local_name(cfg: dict | None = None) -> str:
@@ -116,20 +260,51 @@ async def push_status():
     await HUB.send({"type": "status", "status": status()})
 
 
-async def permission_gate(name: str, inp: dict) -> bool:
+# Dr Wolf's wish: one ALLOW per skill, not one per step. A yes covers the same kind of action
+# for the rest of that job: a whole build plan (per project folder), or the rest of the current
+# request for anything else. STOP and a fresh conversation take every grant back.
+GRANTS: dict[str, float] = {}               # key -> expires at
+GRANT_TTL = {"project": 3 * 3600, "turn": 15 * 60}
+TURN = {"n": 0}
+
+
+def _grant_key(name: str, scope: str | None) -> tuple[str, int]:
+    if scope:                               # a plan's file-writing and command steps share one yes
+        kind = "steps" if name in ("project_write", "run_command") else name
+        return f"{scope}|{kind}", GRANT_TTL["project"]
+    return f"turn{TURN['n']}|{name}", GRANT_TTL["turn"]
+
+
+def clear_grants():
+    GRANTS.clear()
+
+
+async def permission_gate(name: str, inp: dict, scope: str | None = None) -> bool:
     """The brain wants to do something that needs Dr Wolf's yes."""
+    key, ttl = _grant_key(name, scope)
+    if GRANTS.get(key, 0) > time.time():
+        log.info("permission: %s already allowed for this job", name)
+        return True
     if not HUB.clients:
         return False
     pid = uuid.uuid4().hex
     fut = asyncio.get_running_loop().create_future()
     HUB.perms[pid] = fut
-    await HUB.send({"type": "permission", "id": pid, "tool": name, "detail": describe(name, inp)})
+    covers = "the whole build plan" if scope else "the rest of this request"
+    detail = f"{describe(name, inp)}\n\n(ALLOW covers this kind of step for {covers}.)"
+    await HUB.send({"type": "permission", "id": pid, "tool": name, "detail": detail})
+    await BEHAVE.allow(True, describe(name, inp))
     audio = await MOUTH.synth("I need your permission for this one, sir. It's on screen.")
-    await HUB.send({"type": "notice", "text": "Permission needed", "audio": _b64(audio)})
+    await HUB.send_voice({"type": "notice", "text": "Permission needed", "audio": _b64(audio)})
     try:
-        return bool(await asyncio.wait_for(fut, 120))
+        ok = bool(await asyncio.wait_for(fut, 120))
+        await BEHAVE.allow(False, allowed=ok)
+        if ok:
+            GRANTS[key] = time.time() + ttl
+        return ok
     except asyncio.TimeoutError:
         await HUB.send({"type": "permission_closed", "id": pid})
+        await BEHAVE.allow(False, allowed=False)
         return False
     finally:
         HUB.perms.pop(pid, None)
@@ -142,9 +317,13 @@ async def camera_provider():
     cid = uuid.uuid4().hex
     fut = asyncio.get_running_loop().create_future()
     HUB.cams[cid] = fut
-    await HUB.send({"type": "camera_request", "id": cid})
+    target = HUB.speaker()                   # the screen he's using: on the phone, its front camera
+    await HUB.send({"type": "camera_request", "id": cid}, only=target)
     try:
         data, note = await asyncio.wait_for(fut, 20)
+        if data:
+            note = ("his phone's front camera" if HUB.where.get(target, "").startswith("phone")
+                    else "the PC's camera" if target is not None else "the Jarvis window's camera")
         return data, note
     except asyncio.TimeoutError:
         return None, "The camera didn't answer. Is it allowed in the Jarvis window?"
@@ -158,7 +337,8 @@ CLAUDE.on_model = lambda: push_status()
 LOCAL = LocalBrain(permission_gate)
 GEMINI = GeminiBrain(permission_gate)
 BRAIN = Hybrid(CLAUDE, LOCAL, GEMINI)           # routes each request to the brain he picked
-TURNLOG = growth.TurnLog()                      # every request, for the daily learning
+TURNLOG = growth.TurnLog()
+BEHAVE = behaviour.Behaviour(lambda ev: HUB.send(ev), LOGS)   # the observable behaviour layer (TANTRA-06)
 GROWTH = growth.Growth()
 LAST_TURN = {"at": time.time()}
 GOOD = re.compile(r"^\s*(good job|well done|perfect|great job|excellent|shabash|bahut badhiya|"
@@ -207,8 +387,11 @@ class Conversation:
     async def _turn(self, text: str, images: list[dict]):
         async with self.lock:
             self.cut = False
+            TURN["n"] += 1                          # per-request permission grants start afresh
             HUB.remember("you", text + ("  [+ picture]" if images else ""))
-            await HUB.send({"type": "turn_start", "text": text, "pictures": len(images)})
+            await HUB.send({"type": "turn_start", "text": text, "pictures": len(images),
+                            "speaker": HUB.ids.get(HUB.speaker())})
+            await BEHAVE.turn_start(text, answered_by())
             q: asyncio.Queue = asyncio.Queue()
             speaker = asyncio.create_task(self._speaker(q))
             reply: list[str] = []
@@ -223,6 +406,7 @@ class Conversation:
                             used[-1]["result"] = ev[2][:200]
                             if ev[3]:
                                 used[-1]["error"] = ev[2][:150]
+                        await BEHAVE.tool_result(ev[1], bool(ev[3]) if len(ev) > 3 else False, ev[2])
                         continue
                     if kind == "delta":
                         reply.append(ev[1])
@@ -233,8 +417,10 @@ class Conversation:
                         used.append({"name": ev[1].replace(f"mcp__{tools.SERVER_NAME}__", ""),
                                      "args": json.dumps(ev[2], ensure_ascii=False)[:200]})
                         await HUB.send({"type": "tool", "name": ev[1], "detail": describe(ev[1], ev[2])})
+                        await BEHAVE.tool(ev[1], describe(ev[1], ev[2]))
                     elif kind == "error":
                         errors.append(ev[1][:200])
+                        await BEHAVE.error(ev[1])
                         chunk = ("\n" if reply else "") + ev[1]
                         reply.append(chunk)
                         await HUB.send({"type": "delta", "text": chunk})
@@ -257,6 +443,7 @@ class Conversation:
                     TURNLOG.record(answered_by(), text, "".join(reply).strip(), used, errors)
                 except Exception:
                     log.exception("growth log: couldn't record the turn")
+                await BEHAVE.turn_end(len(errors))
                 await HUB.send({"type": "turn_end"})
 
     async def _speaker(self, q: asyncio.Queue):
@@ -277,7 +464,7 @@ class Conversation:
             if self.cut:
                 continue
             seq += 1
-            await HUB.send({"type": "say", "seq": seq, "text": text, "audio": _b64(audio)})
+            await HUB.send_voice({"type": "say", "seq": seq, "text": text, "audio": _b64(audio)})
 
 
 CONVO = Conversation()
@@ -375,8 +562,47 @@ def switch_report(choice: str) -> str:
 async def announce(text: str):
     HUB.remember("jarvis", text)
     audio = await MOUTH.synth(text)
-    await HUB.send({"type": "announce", "text": text, "audio": _b64(audio)})
+    await HUB.send_voice({"type": "announce", "text": text, "audio": _b64(audio)})
     await push_status()
+
+
+async def log_note(text: str):
+    """A silent entry in his LOG panel (links in it are clickable)."""
+    HUB.remember("jarvis", text)
+    await HUB.send({"type": "log_note", "text": text})
+
+
+import web as websearch                        # noqa: E402  (aiohttp's `web` is taken)
+websearch.LOG_HOOK = log_note
+
+
+# Every switch to Claude Opus (and "check yourself") runs the self-check of eyes and hands.
+async def repair_gate(proposal: dict) -> bool:
+    """A fix Claude prepared goes on screen (PC and phone). Nothing changes unless he presses ALLOW;
+    DENY or no answer in 15 minutes leaves the code as it is."""
+    rid = uuid.uuid4().hex
+    fut = asyncio.get_running_loop().create_future()
+    HUB.repairs[rid] = fut
+    HUB.pending_repair = {"type": "repair", "id": rid, **proposal}
+    await HUB.send(HUB.pending_repair)
+    try:
+        return bool(await asyncio.wait_for(fut, 15 * 60))
+    except asyncio.TimeoutError:
+        return False
+    finally:
+        HUB.repairs.pop(rid, None)
+        HUB.pending_repair = None
+        await HUB.send({"type": "repair_closed", "id": rid})
+
+
+SELFTEST = selftest.SelfTest()
+SELFTEST.announce = announce
+SELFTEST.approve = repair_gate
+SELFTEST.windows = lambda: len(HUB.clients)
+SELFTEST.claude_ok = lambda: CLAUDE.status == "ready"
+tools.STATE.self_tester = lambda: SELFTEST.start("he asked for a self-check")
+PHONE = phonehands.PhoneHands()                 # his hands on the phone (the Jarvis Hands app)
+tools.STATE.phone = PHONE
 
 
 def read_switch_note() -> dict | None:
@@ -410,18 +636,34 @@ async def confirm_switch(note: dict, starting: list):
         await asyncio.sleep(0.5)
     await asyncio.sleep(1)
     await announce(text)
+    if note["choice"] == "opus" and CLAUDE.status == "ready":
+        await asyncio.sleep(5)                  # let the confirmation finish playing
+        SELFTEST.start("he switched Jarvis to Claude Opus")
 
 
 # ------------------------------------------------------------ websocket ----
 async def ws_handler(request: web.Request):
-    if request.headers.get("Origin") not in ORIGINS:
+    if not origin_ok(request):
+        log.warning("refused a live link from %s (page %s, address %s)", request.remote,
+                    request.headers.get("Origin"), request.host)
         return web.Response(status=403, text="Only the Jarvis window may connect.")
     if RESTART["go"]:                            # on the way out: the window should wait for the new one
         return web.Response(status=503, text="Jarvis is restarting.")
-    ws = web.WebSocketResponse(max_msg_size=24 * 1024 * 1024, heartbeat=25)
+    # compress=False: with compression on, aiohttp 3.14 drops the link when a browser's first
+    # message after a heartbeat reply is compressed ("non-zero reserved bits"), losing that
+    # message (often his first question). Everything here is local, so compression isn't needed.
+    ws = web.WebSocketResponse(max_msg_size=24 * 1024 * 1024, heartbeat=25, compress=False)
     await ws.prepare(request)
     HUB.clients.add(ws)
-    await ws.send_json({"type": "hello", "status": status(), "history": HUB.history[-60:]})
+    HUB.ids[ws] = uuid.uuid4().hex[:8]
+    HUB.where[ws] = "this PC" if request.remote in ("127.0.0.1", "::1") else f"phone/other device {request.remote}"
+    log.info("window connected: %s", HUB.where[ws])
+    if HUB.where[ws] == "this PC":
+        asyncio.create_task(_maximize_soon())
+    await ws.send_json({"type": "hello", "status": status(), "history": HUB.history[-60:],
+                        "you": HUB.ids[ws], "phone_url": PHONE_URL})
+    if HUB.pending_repair:                         # a fix still waiting for his answer
+        await ws.send_json(HUB.pending_repair)
     try:
         async for msg in ws:
             if msg.type != WSMsgType.TEXT:
@@ -431,18 +673,28 @@ async def ws_handler(request: web.Request):
             except ValueError:
                 continue
             try:
-                await on_client(data)
+                await on_client(data, ws)
             except Exception as e:
                 log.exception("window message failed")
                 await ws.send_json({"type": "toast", "text": f"Error: {e}"})
     finally:
         HUB.clients.discard(ws)
+        HUB.ids.pop(ws, None)
+        err = ws.exception()
+        log.info("window closed: %s (code %s%s)", HUB.where.pop(ws, "?"), ws.close_code,
+                 f", {type(err).__name__}: {err}" if err else "")
+        if HUB.active is ws:
+            HUB.active = None
     return ws
 
 
-async def on_client(d: dict):
+async def on_client(d: dict, ws: web.WebSocketResponse | None = None):
     t = d.get("type")
     if t == "ask":
+        if ws is not None:
+            if HUB.active is not ws:
+                log.info("he's asking from %s", HUB.where.get(ws, "?"))
+            HUB.active = ws
         text = (d.get("text") or "").strip()
         images = [im for im in (d.get("images") or []) if isinstance(im, dict) and im.get("data")]
         if d.get("screen"):
@@ -453,6 +705,8 @@ async def on_client(d: dict):
         if text or images:
             await CONVO.ask(text or "What do you see in this picture?", images)
     elif t == "stop":
+        clear_grants()                          # STOP takes back every "allowed for this job"
+        SELFTEST.stop()
         await CONVO.stop()
     elif t == "hands":
         tools.STATE.hands = bool(d.get("on"))
@@ -462,13 +716,23 @@ async def on_client(d: dict):
         f = HUB.perms.get(d.get("id"))
         if f and not f.done():
             f.set_result(bool(d.get("allow")))
+    elif t == "repair_reply":
+        f = HUB.repairs.get(d.get("id"))
+        if f and not f.done():
+            log.info("proposed fix: he pressed %s", "ALLOW" if d.get("allow") else "DENY")
+            f.set_result(bool(d.get("allow")))
     elif t == "camera_frame":
         f = HUB.cams.get(d.get("id"))
         if f and not f.done():
             f.set_result((d.get("data"), d.get("note") or ""))
+    elif t == "open_link":                     # a link clicked in the LOG panel
+        url = str(d.get("url") or "")
+        if re.match(r"^https?://[^\s\"'<>]+$", url):
+            await asyncio.to_thread(webbrowser.open_new_tab, url)
     elif t == "signin":
         asyncio.create_task(do_signin())
     elif t == "new_session":
+        clear_grants()
         await CONVO.stop(quiet=True)
         await BRAIN.restart()
         HUB.history.clear()
@@ -542,6 +806,9 @@ async def api_feedback(request):
 
 async def run_growth(spoken: bool):
     msg = await GROWTH.run()
+    if "done" in msg:
+        sc = re.search(r"(\d+) out of (\d+)", msg)
+        await BEHAVE.lessons_done(f"{sc.group(1)}/{sc.group(2)}" if sc else "")
     log.info("growth: %s", msg)
     if "done" in msg and CLAUDE.status == "ready" and not BRAIN.busy:
         await CLAUDE.restart()                  # Claude reads its lessons when it starts
@@ -570,8 +837,69 @@ async def learn_now() -> str:
 
 
 tools.STATE.learner = learn_now
-builder.GATE = permission_gate
+async def project_gate(name: str, inp: dict) -> bool:
+    """Build-plan steps: one ALLOW covers every step of that project."""
+    folder = str(inp.get("folder") or "")
+    return await permission_gate(name, inp, scope=f"project:{folder}" if folder else None)
+
+
+builder.GATE = project_gate
 builder.GEMINI = GEMINI
+
+
+# ------------------------------------------------------------ test bench ----
+# With "test_bench": true in jarvis.json, a list of eyes/hands tool calls dropped into
+# logs/tmp/bench-request.json is run on the real screen, and what happened (each tool's reply, a
+# screenshot after each step, which window had the keyboard) is written to logs/tmp/bench/.
+# It lets the hands be tested properly without anyone typing into Jarvis.
+BENCH_TOOLS = {"run_self_test", "read_whole_page", "look_at_screen", "see_buttons", "click_button", "look_closer", "read_screen_text",
+               "click_text", "click_at", "type_text", "press_keys", "scroll", "open_app", "open_url",
+               "list_windows", "focus_window", "android_build", "github_build", "github_build_status", "github_publish", "samasa"}
+
+
+async def bench_loop():
+    req, out = LOGS / "tmp" / "bench-request.json", LOGS / "tmp" / "bench"
+    while True:
+        await asyncio.sleep(2)
+        try:
+            if not req.exists() or not load_config().get("test_bench"):
+                continue
+            plan = json.loads(req.read_text(encoding="utf-8"))
+            req.unlink()
+            out.mkdir(parents=True, exist_ok=True)
+            by_name = {t.name: t for t in tools.ALL}
+            results = []
+            for i, st in enumerate(plan.get("steps", []), 1):
+                name, args = st.get("tool", ""), st.get("args") or {}
+                t0 = time.time()
+                if name == "sleep":
+                    await asyncio.sleep(float(args.get("seconds", 1)))
+                    results.append({"step": i, "tool": name, "args": args})
+                    continue
+                if name not in BENCH_TOOLS:
+                    results.append({"step": i, "tool": name, "text": ["not allowed on the bench"], "error": True})
+                    continue
+                try:
+                    res = await by_name[name].handler(args)
+                except Exception as e:
+                    res = {"content": [{"type": "text", "text": f"EXCEPTION: {e!r}"}], "is_error": True}
+                content = res.get("content", [])
+                for j, c in enumerate(x for x in content if x.get("type") == "image"):
+                    (out / f"step{i}-tool{j}.jpg").write_bytes(base64.b64decode(c["data"]))
+                img, _ = await asyncio.to_thread(tools.grab_screen)
+                shot, _ = await asyncio.to_thread(tools.to_jpeg_b64, img, 1600, 70)
+                (out / f"step{i}-after.jpg").write_bytes(base64.b64decode(shot))
+                results.append({"step": i, "tool": name, "args": args,
+                                "text": [c.get("text", "") for c in content if c.get("type") == "text"],
+                                "error": bool(res.get("is_error")), "secs": round(time.time() - t0, 1),
+                                "keyboard_on": tools._foreground()[1] if IS_WIN else ""})
+                log.info("bench step %d %s -> %s", i, name, (results[-1]["text"] or [""])[0][:160])
+            (out / "result.json").write_text(json.dumps({"id": plan.get("id"), "finished": time.time(),
+                                                          "results": results}, indent=1), encoding="utf-8")
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("test bench")
 
 
 async def growth_loop():
@@ -588,6 +916,29 @@ async def growth_loop():
             raise
         except Exception:
             log.exception("growth loop")
+
+
+async def api_phone_pull(request):
+    """The phone app asks for the next action to do (long-poll)."""
+    return web.json_response(await PHONE.pull())
+
+
+async def api_phone_result(request):
+    """The phone app reports what happened."""
+    try:
+        PHONE.result(await request.json())
+    except ValueError:
+        raise web.HTTPBadRequest()
+    return web.json_response({"ok": True})
+
+
+async def api_selftest_report(request):
+    """The self-check page tells Jarvis what really happened on it (clicks, typing, scrolling)."""
+    try:
+        SELFTEST.page_report(await request.json())
+    except ValueError:
+        raise web.HTTPBadRequest()
+    return web.json_response({"ok": True})
 
 
 async def api_gemini_key(request):
@@ -613,9 +964,11 @@ async def start_ears():
 # ----------------------------------------------------------------- http ----
 @web.middleware
 async def guard(request: web.Request, handler):
-    if request.host not in HOSTS:                       # blocks DNS-rebinding tricks
+    if not host_ok(request.host):                       # blocks DNS-rebinding tricks
+        log.warning("refused %s %s from %s: address %r isn't Jarvis's", request.method, request.path,
+                    request.remote, request.host)
         return web.Response(status=403, text="forbidden")
-    if request.method != "GET" and request.headers.get("Origin") not in ORIGINS:
+    if request.method != "GET" and not origin_ok(request):
         return web.Response(status=403, text="Only the Jarvis window may do that.")
     resp = await handler(request)
     resp.headers["Cache-Control"] = "no-store"
@@ -665,7 +1018,7 @@ async def face_config(request):
             pass
         faces.append(meta)
     return web.json_response({"name": CFG["name"], "badge": "", "face": CFG["face"],
-                              "thinking_sound": True, "faces": faces})
+                              "thinking_sound": False, "faces": faces})
 
 
 async def api_ping(request):
@@ -736,6 +1089,37 @@ async def api_note(request):
                               "text": p.read_text(encoding="utf-8", errors="replace")})
 
 
+UPLOAD_OK = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".pdf", ".txt", ".md", ".csv", ".json",
+             ".html", ".htm", ".log", ".xml"}
+
+
+async def api_upload(request):
+    """The + button: one file from the window, kept in the memory vault's inbox for the brain to read."""
+    name = Path(request.query.get("name") or "file").name
+    safe = re.sub(r"[^\w.\- ]+", "_", name).strip(" .")[:80] or "file"
+    ext = Path(safe).suffix.lower()
+    if ext not in UPLOAD_OK:
+        return web.json_response({"ok": False, "message": f"I can't read {ext or 'that kind of'} files yet, sir. "
+                                  "Pictures, PDFs and text files work."})
+    data = await request.read()
+    if not data:
+        return web.json_response({"ok": False, "message": f"{safe} was empty."})
+    day = MEMORY / "inbox" / time.strftime("%Y-%m-%d")
+    day.mkdir(parents=True, exist_ok=True)
+    p, n = day / safe, 1
+    while p.exists():
+        n += 1
+        p = day / f"{Path(safe).stem}-{n}{ext}"
+    p.write_bytes(data)
+    log.info("he added a file: %s (%d KB)", p.name, len(data) // 1024)
+    return web.json_response({"ok": True, "path": p.relative_to(MEMORY).as_posix(), "name": p.name})
+
+
+async def api_behaviour(request):
+    """The behaviour layer: vitals + the latest events (the journal)."""
+    return web.json_response(BEHAVE.snapshot())
+
+
 def build_app() -> web.Application:
     app = web.Application(middlewares=[guard], client_max_size=32 * 1024 * 1024)
     app.router.add_get("/", root)
@@ -752,7 +1136,12 @@ def build_app() -> web.Application:
     app.router.add_post("/api/brain", api_brain)
     app.router.add_post("/api/gemini_key", api_gemini_key)
     app.router.add_post("/api/feedback", api_feedback)
+    app.router.add_post("/api/upload", api_upload)
+    app.router.add_get("/api/behaviour", api_behaviour)
     app.router.add_post("/api/grow", api_grow)
+    app.router.add_post("/api/selftest/report", api_selftest_report)
+    app.router.add_get("/api/phone/pull", api_phone_pull)
+    app.router.add_post("/api/phone/result", api_phone_result)
     app.router.add_get("/api/memory", api_memory)
     app.router.add_get("/api/memory/note", api_note)
     return app
@@ -775,6 +1164,45 @@ def open_window():
     webbrowser.open(URL)
 
 
+def maximize_window() -> bool:
+    """Edge ignores --start-maximized when it is already running (the new process hands the
+    window to the old one, which reuses its last size), so the window can come up small in a
+    corner. Find the Jarvis window ourselves and maximize it. True once it's done."""
+    if not IS_WIN:
+        return True
+    import ctypes
+    from ctypes import wintypes
+    u32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def each(h, _):
+        if u32.IsWindowVisible(h):
+            cls = ctypes.create_unicode_buffer(120)
+            u32.GetClassNameW(h, cls, 120)
+            t = tools._title(h)
+            if cls.value.startswith("Chrome_WidgetWin") and (t.strip().upper() == "JARVIS" or tools._is_jarvis(t)):
+                found.append(h)
+        return True
+
+    u32.EnumWindows(each, 0)
+    for h in found:
+        if not u32.IsZoomed(h):
+            u32.ShowWindow(h, 3)                 # SW_MAXIMIZE
+    return bool(found)
+
+
+async def _maximize_soon():
+    for _ in range(12):                          # the page may still be naming itself
+        try:
+            if await asyncio.to_thread(maximize_window):
+                return
+        except Exception as e:
+            log.warning("couldn't maximize the window: %s", e)
+            return
+        await asyncio.sleep(0.5)
+
+
 def already_running() -> bool:
     try:
         with urllib.request.urlopen(URL + "api/ping", timeout=2) as r:
@@ -793,18 +1221,42 @@ async def _window_unless_back():
 
 
 async def serve(note: dict | None):
-    global SHUTDOWN
+    global SHUTDOWN, PHONE_URL
     SHUTDOWN = asyncio.Event()
     runner = web.AppRunner(build_app(), access_log=None, shutdown_timeout=3)
     await runner.setup()
-    await web.TCPSite(runner, "127.0.0.1", PORT).start()
+    await web.TCPSite(runner, "127.0.0.1", PORT).start()        # the PC window: loopback, no firewall
+    keep_awake()
+    ip = lan_ip() if PHONE else None
+    PHONE_URL = ""
+    if PHONE and ip:                             # the phone: HTTPS on the SAME already-open port
+        ctx = await asyncio.to_thread(_tls_context)
+        if ctx is not None:
+            try:
+                await web.TCPSite(runner, ip, PORT, ssl_context=ctx).start()
+                PHONE_URL = f"https://{ip}:{PORT}/"
+                log.info("phone link (HTTPS on the open port): %s", PHONE_URL)
+            except OSError as e:
+                log.warning("couldn't open the phone HTTPS listener on %s:%s: %s", ip, PORT, e)
     print()
     print(f"  {CFG['name']} is running at {URL}")
+    if PHONE_URL:
+        print(f"  On your phone (Chrome or the app):  {PHONE_URL}")
     print("  Keep this window open. Closing it switches Jarvis off.")
     print()
+    if PHONE_URL:
+        kind = await asyncio.to_thread(network_kind)
+        log.info("phone link: %s (Windows calls this network: %s)", PHONE_URL, kind or "unknown")
+        if kind.lower() == "public":
+            print("  NOTE: Windows calls this Wi-Fi 'Public', which keeps phones out. To let the phone in:")
+            print("  Settings > Network & internet > Wi-Fi > your network > choose 'Private network'.")
+            print()
     bg = [asyncio.create_task(start_ears()), asyncio.create_task(start_brain()),
           asyncio.create_task(start_local()), asyncio.create_task(start_gemini()),
-          asyncio.create_task(growth_loop())]
+          asyncio.create_task(growth_loop()), asyncio.create_task(bench_loop())]
+    fix = selftest.pending()                     # a fix he applied: check it now it's loaded
+    if fix:
+        bg.append(asyncio.create_task(SELFTEST.resume(fix)))
     if note:
         try:
             HUB.history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))[-200:]
