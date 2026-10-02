@@ -1,5 +1,7 @@
 # Jarvis-Max
 
+> 🆕 **New to AI or GitHub? Start with the hand-written [beginner's notebook](NEWBIES-START-HERE.md).**
+
 A voice-first AI desktop assistant for Windows. Talk to it and it answers in a calm British voice. It can see your screen and webcam, use your mouse and keyboard when you allow it, research the web, keep a Markdown memory, and learn from its mistakes every night.
 
 - **7 swappable brains:** Claude Sonnet, Opus and Haiku (your Claude plan), Gemini and Gemini Flash-Lite (your API key), local Qwen through Ollama (free and private), or Auto. Switch from a menu or by voice.
