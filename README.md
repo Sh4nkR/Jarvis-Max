@@ -13,6 +13,8 @@ A voice-first AI assistant for your Windows PC **and your Android phone**. Talk 
 
 **Quick start (Windows 10/11):** download the repo, double-click `Start-Jarvis-Max.bat`, sign in to Claude (or paste a free Gemini key), and say "hello".
 
+📘 **The 8-page overview: [docs/Jarvis-Max-Overview.pdf](docs/Jarvis-Max-Overview.pdf)** · 🗺️ architecture map: [Jarvis-Max-workflow.png](Jarvis-Max-workflow.png) · every job step by step: [Jarvis-skills-workflows.png](Jarvis-skills-workflows.png)
+
 📖 **Full guide: [Jarvis-Max.md](Jarvis-Max.md)** covers features, architecture, setup, configuration, the learning loop, teaching new abilities, the local API and how to add your own brain.
 Non-technical users: see [READ-ME-FIRST.txt](READ-ME-FIRST.txt).
 
