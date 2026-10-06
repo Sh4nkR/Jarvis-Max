@@ -27,6 +27,7 @@ DEFAULTS = {
     "local_ctx": 12288,            # the local brain's working memory, in tokens
     "search_region": "in-en",
     "gemini_model": "auto",
+    "deepseek_model": "auto",      # auto = deepseek-v4-flash; or "deepseek-v4-pro"
     "github_user": "",             # his GitHub username, for github_publish        # auto = the newest Gemini Flash the key can use; or e.g. "gemini-3.8-flash"
     "hands_on_at_start": True,
     "open_window": True,
@@ -63,6 +64,8 @@ BRAINS = {
                "about": "Google's Gemini, with your own Gemini API key."},
     "gemini-lite": {"label": "Gemini Flash-Lite", "brain_mode": "gemini", "gemini_model": "gemini-3.5-flash-lite",
                     "about": "Gemini 3.5 Flash-Lite: the quickest Gemini, same API key. Weaker at long jobs."},
+    "deepseek": {"label": "DeepSeek", "brain_mode": "deepseek", "deepseek_model": "auto",
+                 "about": "DeepSeek V4 online (deepseek-v4-flash), with your own DeepSeek API key. Reads text, not pictures."},
     "auto": {"label": "Auto", "brain_mode": "auto",
              "about": "Claude first; the local brain when your Claude limit runs out."},
 }
@@ -89,7 +92,7 @@ def brain_choice(cfg: dict | None = None) -> str:
     mode = (cfg.get("brain_mode") or "auto").lower()
     if mode == "gemini":
         return "gemini-lite" if "lite" in (cfg.get("gemini_model") or "").lower() else "gemini"
-    if mode in ("local", "auto"):
+    if mode in ("local", "auto", "deepseek"):
         return mode
     model = (cfg.get("model") or "").lower()
     return "opus" if "opus" in model else "haiku" if "haiku" in model else "sonnet"
@@ -113,7 +116,7 @@ def save_brain(choice: str) -> dict:
     except (OSError, ValueError):
         cfg = {}
     cfg["brain_mode"] = pick["brain_mode"]
-    for key in ("model", "gemini_model"):
+    for key in ("model", "gemini_model", "deepseek_model"):
         if key in pick:
             cfg[key] = pick[key]
     path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")

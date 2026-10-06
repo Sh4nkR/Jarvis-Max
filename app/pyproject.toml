@@ -18,5 +18,11 @@ dependencies = [
     "ddgs>=9.16",                  # local brain: web search and page reading, no API key
 ]
 
+[project.optional-dependencies]
+gpu = [                        # ears on an NVIDIA card (the .bat adds these only when it finds one)
+    "nvidia-cublas-cu12>=12.4; sys_platform == 'win32'",
+    "nvidia-cudnn-cu12>=9,<10; sys_platform == 'win32'",
+]
+
 [tool.uv]
 package = false

@@ -120,7 +120,7 @@
       }
     } catch (e) { /* a bad clip never jams the queue */ }
     if (mine !== gen) return;
-    playing = null; fakeSpeech = 0;
+    playing = null; fakeSpeech = 0; speakEnd = performance.now();
     if (queue.length) playNext(); else settle();
   }
 
@@ -167,7 +167,7 @@
           <button id="jv-free" title="Hands-free: Jarvis listens on its own and answers when you pause. Click again to turn it off.">${ICON.mic}<span>LISTEN</span></button>
           <button id="jv-add" title="Add pictures, PDFs or text files for Jarvis to read, remember and learn from">+</button>
           <input id="jv-file" type="file" multiple hidden accept="image/*,.pdf,.txt,.md,.csv,.json,.html,.htm,.log,.xml">
-          <input id="jv-input" type="text" autocomplete="off" spellcheck="false" placeholder="${HINT}">
+          <input id="jv-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${HINT}">
           <button id="jv-send">${ICON.send}SEND</button>
           <button id="jv-good" class="jv-verdict" title="That answer was right. Jarvis keeps doing it that way.">${ICON.up}</button>
           <button id="jv-bad" class="jv-verdict" title="That answer was wrong. Type what was wrong in the box first if you like; Jarvis learns from it tonight.">${ICON.down}</button>
@@ -181,17 +181,17 @@
           <button id="jv-voice" title="Spoken replies on/off">${ICON.voice}<span>VOICE</span></button>
           <button id="jv-log" title="The whole conversation">${ICON.log}LOG</button>
           <button id="jv-face" title="Switch Jarvis's face">${ICON.face}FACE</button>
-          <button id="jv-brainbtn" title="Choose Jarvis's brain: Claude Sonnet, Opus or Haiku, Local Qwen, Gemini, Gemini Flash-Lite or Auto">${ICON.brain}BRAIN</button>
+          <button id="jv-brainbtn" title="Choose Jarvis's brain: Claude Sonnet, Opus or Haiku, Local Qwen, Gemini, Gemini Flash-Lite, DeepSeek or Auto">${ICON.brain}BRAIN</button>
           <button id="jv-stop" title="Stop (Esc)">${ICON.stop}STOP</button>
         </div>
       </div>
       <div id="jv-panel"><header><span id="jv-ptitle">LOG</span><button id="jv-pclose">CLOSE</button></header><div class="jv-body" id="jv-pbody"></div></div>
       <div class="jv-card" id="jv-perm"><h2>PERMISSION NEEDED</h2><p>Jarvis wants to:</p><code id="jv-permtext"></code>
         <div class="btns"><button class="jv-yes" id="jv-allow">ALLOW</button><button class="jv-no" id="jv-deny">DENY</button></div></div>
-      <div class="jv-card" id="jv-repair"><h2>FIX PROPOSED BY CLAUDE OPUS</h2>
+      <div class="jv-card" id="jv-repair"><h2 id="jv-repair-title">FIX PROPOSED BY CLAUDE OPUS</h2>
         <p id="jv-repair-sum"></p><p class="jv-small" id="jv-repair-cause"></p>
         <pre id="jv-repair-diff"></pre>
-        <p class="jv-small">Nothing changes unless you press ALLOW. Then Jarvis applies the fix; restart him and he checks everything again, keeping the fix only if every check passes.</p>
+        <p class="jv-small" id="jv-repair-note">Nothing changes unless you press ALLOW. Then Jarvis applies the fix; restart him and he checks everything again, keeping the fix only if every check passes.</p>
         <div class="btns"><button class="jv-yes" id="jv-repair-yes">ALLOW: APPLY THE FIX</button><button class="jv-no" id="jv-repair-no">DENY</button></div></div>
       <div class="jv-card" id="jv-brains"><h2>CHOOSE THE BRAIN</h2>
         <div class="jv-brainopts" id="jv-brainopts"></div>
@@ -204,6 +204,12 @@
         <input id="jv-gemkey-in" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the key here">
         <p class="jv-small" id="jv-gemkey-msg"></p>
         <div class="btns"><button class="jv-yes" id="jv-gemkey-save">SAVE KEY</button><button class="jv-no" id="jv-gemkey-close">LATER</button></div></div>
+      <div class="jv-card" id="jv-dskey"><h2>DEEPSEEK API KEY</h2>
+        <p>The DeepSeek brain needs a DeepSeek API key (pay-as-you-go, from DeepSeek).</p>
+        <p class="jv-small">On any browser: open <b>platform.deepseek.com/api_keys</b>, sign in, click <b>Create new API key</b>, copy it, and paste it here. The account needs a little credit topped up.</p>
+        <input id="jv-dskey-in" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the key here">
+        <p class="jv-small" id="jv-dskey-msg"></p>
+        <div class="btns"><button class="jv-yes" id="jv-dskey-save">SAVE KEY</button><button class="jv-no" id="jv-dskey-close">LATER</button></div></div>
       <div class="jv-card" id="jv-signin"><h2>ONE-TIME SIGN-IN</h2>
         <p>Jarvis's brain is Claude Code on your Claude plan. It needs you to sign in once.</p>
         <p id="jv-signin-msg">Press SIGN IN. A Claude page opens in your browser: sign in and click <b>Authorize</b>. Then come back here.</p>
@@ -218,7 +224,27 @@
       if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") { e.preventDefault(); submit(); }
       if (e.key === "Escape") { e.preventDefault(); stopAll(); }
+      if (/^(Arrow|Home|End)/.test(e.key)) caretMoved = true;
     });
+    // Some phone keyboards/browsers drop the caret back to the start after each key, so the
+    // words arrive back to front ("olleh"). If he hasn't moved the caret himself, new text
+    // belongs at the end: when it lands in front instead, put it back in order.
+    let lastText = "", caretMoved = false;
+    const caretGuard = (e) => {
+      if (e && e.isComposing) return;
+      const v = input.value;
+      if (!caretMoved && lastText && v.length > lastText.length && v.endsWith(lastText) && !v.startsWith(lastText)) {
+        input.value = lastText + v.slice(0, v.length - lastText.length);
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+      lastText = input.value;
+      if (!lastText) caretMoved = false;
+    };
+    input.dir = "ltr";
+    input.addEventListener("input", caretGuard);
+    input.addEventListener("compositionend", caretGuard);
+    input.addEventListener("pointerdown", () => { caretMoved = !!input.value; });
+    input.addEventListener("focus", () => { lastText = input.value; });
     addEventListener("keydown", (e) => {
       if (e.key === "F2") { e.preventDefault(); talk(); }
       else if (e.key === "Escape") stopAll();
@@ -230,6 +256,9 @@
     $("jv-gemkey").addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") saveGeminiKey(); });
     $("jv-gemkey-save").onclick = saveGeminiKey;
     $("jv-gemkey-close").onclick = () => { gemKeyLater = true; $("jv-gemkey").classList.remove("show"); };
+    $("jv-dskey").addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") saveDeepSeekKey(); });
+    $("jv-dskey-save").onclick = saveDeepSeekKey;
+    $("jv-dskey-close").onclick = () => { gemKeyLater = true; $("jv-dskey").classList.remove("show"); };
 
     $("jv-talk").onclick = talk;
     $("jv-free").onclick = toggleListen;
@@ -461,7 +490,7 @@
   }
 
   /* ---------------------------------------------------------------- talk -- */
-  async function finishRecording(chunks, cancelled) {
+  async function finishRecording(chunks, cancelled, handsFree = true) {
     if (cancelled) return;
     const blob = new Blob(chunks, { type: "audio/webm" });
     if (blob.size < 1500) return;
@@ -470,7 +499,14 @@
     try {
       const r = await realFetch("/api/listen", { method: "POST", body: blob, headers: { "Content-Type": "audio/webm" } });
       const j = await r.json();
-      if (!j.text) { $("jv-you").textContent = ""; settle(); toast("I didn't catch that. Try again, a little closer."); return; }
+      if (!j.text) {
+        $("jv-you").textContent = ""; settle();
+        // nothing heard after cutting in on himself: it was his own echo. Expect a louder echo from now on
+        // and stay quiet instead of showing an error.
+        if (handsFree && barged) { hfK = Math.max(hfK || 0, 0.02) * 1.5; barged = false; return; }
+        if (!handsFree) toast("I didn't catch that. Try again, a little closer.");
+        return;
+      }
       ask(j.text);
     } catch (e) { settle(); toast("Couldn't reach my ears: " + e); }
   }
@@ -496,7 +532,7 @@
       const cancelled = rec && rec.cancelled;
       stream.getTracks().forEach((t) => t.stop());
       rec = null; paint(); settle();
-      finishRecording(chunks, cancelled);
+      finishRecording(chunks, cancelled, false);
     };
     rec.start();
     setState("listening");
@@ -510,7 +546,11 @@
   // Barge-in: while Jarvis is speaking, sir talking over him (louder than Jarvis's own voice
   // coming back through the mic, in 3 of the last 6 ticks: speech has gaps between syllables)
   // cuts him off mid-sentence and starts listening.
-  const HF_BARGE_MIN = 0.05, HF_BARGE_WINDOW_MS = 600, HF_BARGE_HITS = 3, HF_ECHO_X = 2.0, HF_LEARN_MS = 1200;
+  const HF_BARGE_MIN = 0.05, HF_BARGE_WINDOW_MS = 700, HF_BARGE_HITS = 4, HF_ECHO_X = 2.5, HF_LEARN_MS = 1200;
+  // A TV or Bluetooth speaker plays the voice late (up to ~0.5 s), so the echo is compared with the
+  // loudest output over the last second, and the voice's tail is ignored for a moment after he stops.
+  const HF_OUT_WINDOW_MS = 1000, HF_TAIL_MS = 900;
+  let speakEnd = 0;
   let listenOn = false, hfStream = null, hfAnalyser = null, hfData = null, hfRec = null;
   let hfChunks = [], hfSpeechStart = 0, hfSilenceSince = null, hfTimer = null;
   // Echo: the mic also hears Jarvis's own voice from the speakers. The first time he speaks, the
@@ -526,7 +566,44 @@
   }
   let sawToolThisTurn = false, projectMode = false;
 
+  // Background listening: timers in a minimized or hidden window are slowed to once a second,
+  // then once a minute, so the mic check also runs from the AUDIO thread (an AudioWorklet).
+  // Its messages arrive about 10 times a second even when the window is minimized or another
+  // app is in front, and each one runs the listening check. The timer stays as a backup.
+  let hfNode = null, hfWorkLevel = -1, hfLastTick = 0;
+  const HF_WORKLET = `class JvLevel extends AudioWorkletProcessor {
+    constructor() { super(); this.sum = 0; this.n = 0; }
+    process(inputs) {
+      const ch = inputs[0] && inputs[0][0];
+      if (ch) { for (let i = 0; i < ch.length; i++) this.sum += ch[i] * ch[i]; this.n += ch.length; }
+      if (this.n >= sampleRate / 10) { this.port.postMessage(Math.sqrt(this.sum / this.n)); this.sum = 0; this.n = 0; }
+      return true;
+    }
+  }
+  registerProcessor("jv-level", JvLevel);`;
+  let hfWorkletReady = null;
+  async function hfAttachWorklet(src) {
+    try {
+      if (!AC.audioWorklet) return false;
+      if (!hfWorkletReady) hfWorkletReady = AC.audioWorklet.addModule(
+        URL.createObjectURL(new Blob([HF_WORKLET], { type: "application/javascript" })));
+      await hfWorkletReady;
+      hfNode = new AudioWorkletNode(AC, "jv-level");
+      hfNode.port.onmessage = (e) => { hfWorkLevel = e.data; hfTick(); };
+      src.connect(hfNode);
+      const mute = AC.createGain(); mute.gain.value = 0;   // keeps the node pulled by the audio clock, silently
+      hfNode.connect(mute); mute.connect(AC.destination);
+      return true;
+    } catch (e) { hfWorkletReady = null; return false; }
+  }
+  function hfTick() {                       // from the worklet (any time) or the timer (backup)
+    const now = performance.now();
+    if (now - hfLastTick < 60) return;      // both running: don't double-count
+    hfLastTick = now;
+    hfLoop();
+  }
   function hfLevel() {
+    if (hfNode && hfWorkLevel >= 0) return hfWorkLevel;
     hfAnalyser.getFloatTimeDomainData(hfData);
     let sum = 0;
     for (let i = 0; i < hfData.length; i++) sum += hfData[i] * hfData[i];
@@ -578,7 +655,7 @@
     if (playing || queue.length) { // Jarvis is speaking: listen for sir talking over him
       if (!speakT0) return;        // still preparing the sound: nothing to compare yet
       hfOut.push([now, outLevel()]);
-      hfOut = hfOut.filter((p) => now - p[0] <= 400);
+      hfOut = hfOut.filter((p) => now - p[0] <= HF_OUT_WINDOW_MS);
       const outMax = Math.max(0, ...hfOut.map((p) => p[1]));
       if (hfK === null) {           // first time he speaks: learn the echo, don't cut in yet
         if (now - speakT0 < HF_LEARN_MS) { if (outMax > 0.01) hfLearn = Math.max(hfLearn, level / outMax); return; }
@@ -596,6 +673,7 @@
       return;
     }
     hfLoud = []; hfOut = [];
+    if (now - speakEnd < HF_TAIL_MS) return;   // the speakers are still finishing his last words
     if (!turnOpen && level > HF_START) hfBeginUtterance();
   }
   let wakeLock = null;
@@ -619,7 +697,8 @@
       hfTimer = null;
       if (hfRec) { hfRec.cancelled = true; try { hfRec.stop(); } catch (e) {} hfRec = null; }
       if (hfStream) hfStream.getTracks().forEach((t) => t.stop());
-      hfStream = null; hfAnalyser = null;
+      if (hfNode) { try { hfNode.port.onmessage = null; hfNode.disconnect(); } catch (e) {} }
+      hfStream = null; hfAnalyser = null; hfNode = null; hfWorkLevel = -1;
       paint(); settle();
       return;
     }
@@ -637,10 +716,13 @@
     hfAnalyser.fftSize = 1024;
     src.connect(hfAnalyser);
     hfData = new Float32Array(hfAnalyser.fftSize);
+    if (AC.state === "suspended") { try { await AC.resume(); } catch (e) {} }
     listenOn = true;
     keepScreenOn(true);
     paint();
-    hfTimer = setInterval(hfLoop, 100);
+    hfTimer = setInterval(hfTick, 100);
+    hfAttachWorklet(src).then((ok) => console.log(ok ? "[jarvis] listening in the background too (audio thread)"
+                                                     : "[jarvis] background listening: timer only"));
   }
 
   /* -------------------------------------------------------------- camera -- */
@@ -740,6 +822,10 @@
   function showRepair(d) {
     const card = $("jv-repair");
     card.dataset.id = d.id;
+    $("jv-repair-title").textContent = d.title || "FIX PROPOSED BY CLAUDE OPUS";
+    $("jv-repair-yes").textContent = d.button || "ALLOW: APPLY THE FIX";
+    $("jv-repair-note").textContent = d.note || "Nothing changes unless you press ALLOW. Then Jarvis applies the fix; restart him and he checks everything again, keeping the fix only if every check passes.";
+    $("jv-repair-sum").style.whiteSpace = "pre-line";
     $("jv-repair-sum").textContent = d.summary || "Claude changed my code.";
     $("jv-repair-cause").textContent = (d.cause ? "Cause: " + d.cause + "  " : "") + "Files: " + (d.files || []).join(", ");
     $("jv-repair-diff").innerHTML = (d.diff || "").split("\n").map((l) =>
@@ -775,6 +861,18 @@
       const j = await r.json();
       msg.textContent = j.message || "";
       if (j.ok) { $("jv-gemkey-in").value = ""; setTimeout(() => $("jv-gemkey").classList.remove("show"), 1200); }
+    } catch (e) { msg.textContent = "Jarvis isn't running."; }
+  }
+
+  async function saveDeepSeekKey() {
+    const key = $("jv-dskey-in").value.trim(), msg = $("jv-dskey-msg");
+    if (!key) { msg.textContent = "Paste the key first."; return; }
+    msg.textContent = "Checking the key with DeepSeek…";
+    try {
+      const r = await realFetch("/api/deepseek_key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
+      const j = await r.json();
+      msg.textContent = j.message || "";
+      if (j.ok) { $("jv-dskey-in").value = ""; setTimeout(() => $("jv-dskey").classList.remove("show"), 1200); }
     } catch (e) { msg.textContent = "Jarvis isn't running."; }
   }
 
@@ -852,7 +950,7 @@
     $("jv-voice").classList.toggle("off", !voiceOn);
     $("jv-voice").innerHTML = (voiceOn ? ICON.voice : ICON.mute) + `<span>${voiceOn ? "VOICE ON" : "MUTED"}</span>`;
     $("jv-signin").classList.toggle("show", b === "signin");
-    if (b === "needs_key" && !gemKeyLater) $("jv-gemkey").classList.add("show");
+    if (b === "needs_key" && !gemKeyLater) $(status.brain_choice === "deepseek" ? "jv-dskey" : "jv-gemkey").classList.add("show");
     if (b !== "needs_key") gemKeyLater = false;
     if (b === "error" && status.brain_error) $("jv-c-brain").title = status.brain_error;
   }

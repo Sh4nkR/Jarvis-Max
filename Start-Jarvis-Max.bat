@@ -33,7 +33,10 @@ if not exist ".venv\" (
   echo   This takes a few minutes. Later starts take seconds.
   echo.
 )
-"%UV%" sync
+rem NVIDIA card? also fetch the CUDA parts so the ears can run on it
+set "UVX="
+where nvidia-smi >nul 2>nul && set "UVX=--extra gpu"
+"%UV%" sync %UVX%
 if errorlevel 1 goto sync_failed
 
 rem --- 3. Claude sign-in: asks only the first time ---

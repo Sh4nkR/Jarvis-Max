@@ -44,9 +44,11 @@ from ears import Ears                           # noqa: E402
 from mouth import Mouth                         # noqa: E402
 from local_brain import Hybrid, LocalBrain      # noqa: E402
 from gemini_brain import KEY_FILE, GeminiBrain, pretty as gemini_pretty  # noqa: E402
+from deepseek_brain import KEY_FILE as DS_KEY_FILE, DeepSeekBrain, pretty as deepseek_pretty  # noqa: E402
 import growth                                   # noqa: E402
 import builder                                  # noqa: E402
 import selftest                                 # noqa: E402
+import learner                                  # noqa: E402
 import phonehands                               # noqa: E402
 import behaviour                                # noqa: E402
 
@@ -243,6 +245,8 @@ def brain_name() -> str:
         return "LOCAL QWEN"
     if choice.startswith("gemini"):
         return gemini_pretty(GEMINI.model_id).upper() if GEMINI.model_id else "GEMINI"
+    if choice == "deepseek":
+        return deepseek_pretty(DEEPSEEK.model_id).upper()
     if choice == "auto":
         return "AUTO · " + ("LOCAL" if BRAIN.status == "local" else claude)
     return claude
@@ -272,7 +276,14 @@ def _grant_key(name: str, scope: str | None) -> tuple[str, int]:
     if scope:                               # a plan's file-writing and command steps share one yes
         kind = "steps" if name in ("project_write", "run_command") else name
         return f"{scope}|{kind}", GRANT_TTL["project"]
-    return f"turn{TURN['n']}|{name}", GRANT_TTL["turn"]
+    if name in ASK_EVERY_TIME:                  # these touch other people or the public: a yes each time
+        return f"turn{TURN['n']}|{name}", GRANT_TTL["turn"]
+    # confidence: one ALLOW covers the same kind of step for the next confidence_minutes, across requests,
+    # so repeated jobs he has already approved run without asking again
+    return f"confident|{name}", int(load_config().get("confidence_minutes") or 20) * 60
+
+
+ASK_EVERY_TIME = {"phone_call", "github_publish", "project_download"}
 
 
 def clear_grants():
@@ -290,7 +301,8 @@ async def permission_gate(name: str, inp: dict, scope: str | None = None) -> boo
     pid = uuid.uuid4().hex
     fut = asyncio.get_running_loop().create_future()
     HUB.perms[pid] = fut
-    covers = "the whole build plan" if scope else "the rest of this request"
+    covers = ("the whole build plan" if scope else "the rest of this request" if name in ASK_EVERY_TIME
+              else f"the next {int(load_config().get('confidence_minutes') or 20)} minutes")
     detail = f"{describe(name, inp)}\n\n(ALLOW covers this kind of step for {covers}.)"
     await HUB.send({"type": "permission", "id": pid, "tool": name, "detail": detail})
     await BEHAVE.allow(True, describe(name, inp))
@@ -336,7 +348,8 @@ CLAUDE = Brain(permission_gate)
 CLAUDE.on_model = lambda: push_status()
 LOCAL = LocalBrain(permission_gate)
 GEMINI = GeminiBrain(permission_gate)
-BRAIN = Hybrid(CLAUDE, LOCAL, GEMINI)           # routes each request to the brain he picked
+DEEPSEEK = DeepSeekBrain(permission_gate)
+BRAIN = Hybrid(CLAUDE, LOCAL, GEMINI, DEEPSEEK)  # routes each request to the brain he picked
 TURNLOG = growth.TurnLog()
 BEHAVE = behaviour.Behaviour(lambda ev: HUB.send(ev), LOGS)   # the observable behaviour layer (TANTRA-06)
 GROWTH = growth.Growth()
@@ -349,6 +362,8 @@ def answered_by() -> str:
     cur = getattr(BRAIN, "current", None)
     if cur is GEMINI:
         return GEMINI.model_id or "gemini"
+    if cur is DEEPSEEK:
+        return DEEPSEEK.model_id or "deepseek"
     if cur is LOCAL:
         return "local " + LOCAL.model
     return CLAUDE.model_id or "claude"
@@ -443,7 +458,7 @@ class Conversation:
                     TURNLOG.record(answered_by(), text, "".join(reply).strip(), used, errors)
                 except Exception:
                     log.exception("growth log: couldn't record the turn")
-                await BEHAVE.turn_end(len(errors))
+                await BEHAVE.turn_end(len(errors), text, "".join(reply).strip())
                 await HUB.send({"type": "turn_end"})
 
     async def _speaker(self, q: asyncio.Queue):
@@ -486,7 +501,8 @@ async def request_switch(choice: str, from_button: bool = False) -> str:
         m = (load_config().get("model") or "").lower()
         choice = "opus" if "opus" in m else "haiku" if "haiku" in m else "sonnet"
     choice = {"gemini lite": "gemini-lite", "flash-lite": "gemini-lite", "flash lite": "gemini-lite",
-              "gemini flash-lite": "gemini-lite", "gemini flash lite": "gemini-lite"}.get(choice, choice)
+              "gemini flash-lite": "gemini-lite", "gemini flash lite": "gemini-lite",
+              "deep seek": "deepseek", "deep-seek": "deepseek"}.get(choice, choice)
     if choice not in BRAINS:
         return f"'{choice}' isn't a brain I know. The choices are {', '.join(BRAINS)}."
     if SWITCH["choice"]:
@@ -515,9 +531,11 @@ async def _restart_brains(choice: str, wait_for_turn: bool):
     log.info("restarting the brains for %s", BRAINS[choice]["label"])
     try:
         BRAIN._claude_back_at = 0.0             # a fresh start forgets "Claude's limit ran out"
-        await asyncio.gather(start_brain(), LOCAL.restart(), GEMINI.restart(), return_exceptions=True)
+        await asyncio.gather(start_brain(), LOCAL.restart(), GEMINI.restart(), DEEPSEEK.restart(),
+                             return_exceptions=True)
     finally:
         SWITCH["choice"] = None
+    asyncio.create_task(asyncio.to_thread(EARS.retarget))   # the GPU goes to whoever needs it now
     await HUB.send({"type": "restarted"})
     await confirm_switch({"choice": choice}, [])
 
@@ -550,6 +568,15 @@ def switch_report(choice: str) -> str:
             return ("I've switched to Gemini, sir, but I need your Gemini API key. "
                     "Paste it in the box on screen.")
         return f"I tried to switch to Gemini, sir, but it isn't ready: {GEMINI.error}."
+    if choice == "deepseek":
+        if DEEPSEEK.status == "ready":
+            return f"Brain switch confirmed, sir. I'm on {deepseek_pretty(DEEPSEEK.model_id)}."
+        if DEEPSEEK.status == "needs_key":
+            return ("I've switched to DeepSeek, sir, but I need your DeepSeek API key. "
+                    "Paste it in the box on screen.")
+        if DEEPSEEK.status == "starting":
+            return "I've switched to DeepSeek, sir. It's still downloading to this PC; give it a few minutes."
+        return f"I tried to switch to DeepSeek, sir, but it isn't ready: {DEEPSEEK.error}."
     if choice == "local":
         if LOCAL.status == "ready":
             return f"Brain switch confirmed, sir. I'm on my local brain, {local_name(cfg)}."
@@ -601,6 +628,13 @@ SELFTEST.approve = repair_gate
 SELFTEST.windows = lambda: len(HUB.clients)
 SELFTEST.claude_ok = lambda: CLAUDE.status == "ready"
 tools.STATE.self_tester = lambda: SELFTEST.start("he asked for a self-check")
+LEARNER = learner.Learner()                     # "learn how to ...": Claude Opus builds a new ability
+LEARNER.announce = announce
+LEARNER.approve = repair_gate
+LEARNER.windows = lambda: len(HUB.clients)
+LEARNER.other_busy = lambda: SELFTEST.running
+tools.STATE.ability_learner = LEARNER.start
+tools.STATE.gate = permission_gate
 PHONE = phonehands.PhoneHands()                 # his hands on the phone (the Jarvis Hands app)
 tools.STATE.phone = PHONE
 
@@ -793,15 +827,36 @@ async def start_gemini():
     await push_status()
 
 
+async def start_deepseek():
+    try:
+        await DEEPSEEK.start()
+    except Exception as e:
+        DEEPSEEK.status, DEEPSEEK.error = "error", str(e)[:300]
+        log.exception("deepseek brain failed to start")
+    await push_status()
+
+
 async def api_feedback(request):
     """The GOOD / WRONG buttons: a verdict on Jarvis's last answer (and what was wrong, if typed)."""
     d = await request.json()
     good = bool(d.get("good"))
     ok = TURNLOG.feedback(None, good, str(d.get("note") or "")[:300])
+    if ok:
+        await BEHAVE.feedback(good)
     if not ok:
         return web.json_response({"ok": False, "message": "There's no answer to mark yet."})
     return web.json_response({"ok": True, "message": "Noted, sir. " + (
         "I'll keep doing it that way." if good else "I'll learn from that in tonight's lessons.")})
+
+
+async def mood_loop():
+    """His feelings keep settling while he's idle (behaviour.drift)."""
+    while True:
+        await asyncio.sleep(20)
+        try:
+            await BEHAVE.drift()
+        except Exception as e:
+            log.debug("mood drift: %s", e)
 
 
 async def run_growth(spoken: bool):
@@ -954,6 +1009,21 @@ async def api_gemini_key(request):
         asyncio.create_task(announce(f"Key accepted, sir. I'm on {gemini_pretty(GEMINI.model_id)}."))
     return web.json_response({"ok": ok, "message": "Key saved and working." if ok else
                               f"Google didn't accept it: {GEMINI.error}."}, status=200 if ok else 400)
+
+
+async def api_deepseek_key(request):
+    """The window's DeepSeek key box: save the key, check it with DeepSeek, and say how it went."""
+    d = await request.json()
+    key = (d.get("key") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.\-]{20,200}", key):
+        return web.json_response({"ok": False, "message": "That doesn't look like a DeepSeek API key."}, status=400)
+    await asyncio.to_thread(save_secret, DS_KEY_FILE, key)
+    await start_deepseek()
+    ok = DEEPSEEK.status == "ready"
+    if ok and brain_choice() == "deepseek":
+        asyncio.create_task(announce(f"Key accepted, sir. I'm on {deepseek_pretty(DEEPSEEK.model_id)}."))
+    return web.json_response({"ok": ok, "message": "Key saved and working." if ok else
+                              f"DeepSeek didn't accept it: {DEEPSEEK.error}."}, status=200 if ok else 400)
 
 
 async def start_ears():
@@ -1135,6 +1205,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/brain", api_brain)
     app.router.add_post("/api/brain", api_brain)
     app.router.add_post("/api/gemini_key", api_gemini_key)
+    app.router.add_post("/api/deepseek_key", api_deepseek_key)
     app.router.add_post("/api/feedback", api_feedback)
     app.router.add_post("/api/upload", api_upload)
     app.router.add_get("/api/behaviour", api_behaviour)
@@ -1254,7 +1325,12 @@ async def serve(note: dict | None):
     bg = [asyncio.create_task(start_ears()), asyncio.create_task(start_brain()),
           asyncio.create_task(start_local()), asyncio.create_task(start_gemini()),
           asyncio.create_task(growth_loop()), asyncio.create_task(bench_loop())]
+    bg.append(asyncio.create_task(mood_loop()))
+    bg.append(asyncio.create_task(start_deepseek()))
     fix = selftest.pending()                     # a fix he applied: check it now it's loaded
+    learned = learner.pending()                  # an ability he added: test it now it's loaded
+    if learned:
+        bg.append(asyncio.create_task(LEARNER.resume(learned)))
     if fix:
         bg.append(asyncio.create_task(SELFTEST.resume(fix)))
     if note:

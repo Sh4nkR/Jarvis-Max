@@ -2,9 +2,9 @@
 
 **One AI assistant across your Windows PC and your Android phone: voice, eyes, hands on both devices, a memory, and a nightly self-improvement loop.**
 
-You talk, and Jarvis answers in the voice you pick (British, or the acted yakuza and rikuo characters). On the **PC** he sees your screen and webcam and works your mouse and keyboard. On the **phone**, the Jarvis-Hands™ Android app gives him hands: he reads the screen, opens apps, taps, types, scrolls and places calls. Chrome on the phone carries his face, ears and voice. He builds Android apps (on the PC or on GitHub), learns from files you hand him, remembers you, and improves overnight. Brains are switchable: Claude, Gemini, or a local Qwen model on your own PC.
+You talk, and Jarvis answers in the voice you pick (British, or the acted yakuza and rikuo characters). On the **PC** he sees your screen and webcam and works your mouse and keyboard. On the **phone**, the Jarvis-Hands™ Android app gives him hands: he reads the screen, opens apps, taps, types, scrolls and places calls. Chrome on the phone carries his face, ears and voice. He hears Indian English and Hinglish (Sarvam Saaras V4, with local Whisper as backup), builds Android apps (on the PC or on GitHub), learns from files you hand him, remembers you, improves overnight, checks and repairs his own hands, and **learns new abilities when you ask him to**. Brains are switchable: Claude, Gemini, DeepSeek, or a local Qwen model on your own PC.
 
-Everything runs on your own PC (`127.0.0.1`, plus your home Wi-Fi for the phone). The only things that leave it are the requests to whichever cloud brain you pick.
+Everything runs on your own PC (`127.0.0.1`, plus your home Wi-Fi for the phone). The only things that leave it are the requests to whichever cloud brain you pick, and your speech to Sarvam (only if you saved a Sarvam key).
 
 **Safety, always:** every risky action (calls, builds, publishing, shell commands) waits for your ALLOW. He never types passwords, PINs or OTPs, stays out of banking and payment apps, and keys never go to GitHub.
 
@@ -14,12 +14,13 @@ Everything runs on your own PC (`127.0.0.1`, plus your home Wi-Fi for the phone)
 
 - [Features](#features)
 - [What's new (Sept–Oct 2026)](#whats-new-septoct-2026)
-- [The seven brains](#the-seven-brains)
+- [The eight brains](#the-eight-brains)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Using Jarvis](#using-jarvis)
 - [Self-improvement: how Jarvis learns every night](#self-improvement-how-jarvis-learns-every-night)
+- [Teaching Jarvis new abilities](#teaching-jarvis-new-abilities)
 - [Configuration (`app/jarvis.json`)](#configuration-appjarvisjson)
 - [Project layout](#project-layout)
 - [Local API](#local-api)
@@ -34,15 +35,19 @@ Everything runs on your own PC (`127.0.0.1`, plus your home Wi-Fi for the phone)
 
 | | What it does | Built with |
 |---|---|---|
-| **Brains** | Claude Sonnet / Opus / Haiku, Gemini / Gemini Flash-Lite, local Qwen, or Auto; switch from the BRAIN menu or by voice. Jarvis restarts the brain in-process and confirms which model actually came up. | Claude Agent SDK, Gemini API, Ollama |
-| **Ears** | Push-to-talk (TALK / F2) or hands-free (LISTEN). Tuned for Indian-English accents with a hint prompt and a fix-list for commonly misheard names. | faster-whisper `large-v3-turbo` (CPU, int8), `small.en` fallback |
-| **Voice** | Spoken replies, sentence by sentence, while the answer is still streaming. | edge-tts, `en-GB-RyanNeural` |
-| **Eyes** | Screenshots, on-screen text with positions (OCR), and webcam pictures. | mss, Pillow, Tesseract (optional) |
-| **Hands** | Click by the *words* on screen, click at coordinates, type, press key combos, scroll, open apps and URLs, list and focus windows. A HANDS switch turns them off; slamming the mouse into a screen corner stops any action. | pyautogui, pyperclip |
+| **Brains** | Claude Sonnet / Opus / Haiku, Gemini / Gemini Flash-Lite, DeepSeek V4, local Qwen, or Auto; switch from the BRAIN menu or by voice. Jarvis restarts the brain in-process and confirms which model actually came up. | Claude Agent SDK, Gemini API, DeepSeek API, Ollama |
+| **Ears** | Push-to-talk (TALK / F2) or hands-free (LISTEN), which keeps listening when the window is minimised or behind another app. Main ears: Sarvam Saaras V4, trained on Indian speech, with Jarvis's names as key terms. Backup, the same second: faster-whisper `large-v3-turbo`, on an NVIDIA GPU when it's free, otherwise the CPU. A fix-list corrects commonly misheard names. | Sarvam API, faster-whisper, AudioWorklet |
+| **Voice** | Spoken replies, sentence by sentence, while the answer is still streaming. British by default; `switch_voice` gives yakuza, rikuo, japanese, indian or american. | edge-tts, Gemini speech |
+| **Eyes** | Screenshots, on-screen text with positions (OCR), clickable controls from Windows, and webcam pictures. | mss, Pillow, Tesseract, UI Automation |
+| **Hands (PC)** | Click by the *words* on screen or by a numbered control, click at coordinates, type, press key combos, scroll, open apps and URLs, list and focus windows. A HANDS switch turns them off; slamming the mouse into a screen corner stops any action. | pyautogui, pyperclip |
+| **Phone** | The same face, buttons, mic and camera in Chrome on an Android phone over your home Wi-Fi. The Jarvis-Hands™ app adds hands: read the screen, open apps, tap, type, scroll, Back/Home, and calls after your ALLOW. Refuses banking and payment apps. | Android AccessibilityService |
 | **Web** | Search, read pages, multi-page research with sources, and *multi search* (one term across several engines, summarised). Web text is treated as data, never as instructions. | ddgs |
-| **Memory** | A plain-Markdown vault: a boot file, one note per subject, and a daily log. The brains read and write it themselves. | `memory/` folder |
-| **Growth** | Every request is logged with your thumbs-up or thumbs-down. Each night the local model writes lessons and skills, rewrites everything into one short contradiction-free list, and keeps the changes only if a test sheet scores the same or better. | `app/growth.py` |
-| **Face + dock** | An animated full-screen face (four styles) with a one-click button dock underneath. | ai-visualizer by Jared Rhodenizer |
+| **Memory** | A plain-Markdown vault: a boot file, one note per subject, a daily log, and skill guides. The brains read and write it themselves. | `memory/` folder |
+| **Growth** | Every request is logged with your 👍/👎. Each night lessons and skills are written, condensed and kept only if a test sheet scores the same or better. Lessons that survive become wisdom. | `growth.py`, `wisdom.py` |
+| **New abilities** | *"Learn how to …"*: Claude Opus researches it, plans it, and builds one new ability file. You ALLOW it, restart, Jarvis tests it, you try it. | `learner.py`, `abilities/` |
+| **Self-check** | Ten real-screen checks of his own hands. On a failure, Opus proposes a repair on a copy; ALLOW, restart, and it's kept only if everything passes. | `selftest.py` |
+| **Character** | The Behaviour Layer turns facts (what he's doing, what worked, what failed) into mood and vitals: level, XP, morale, energy and confidence. Confidence means he does what you asked without needless "shall I start?" questions. | `behaviour.py` |
+| **Face + dock** | The Living Face (131 expressions, 27 props) by default, plus Ink Lotus, Circuit Board, Radial, Face in the Code and Neural Core, with a one-click button dock underneath. | ai-visualizer by Jared Rhodenizer, plus the Living Face |
 
 ---
 
@@ -71,25 +76,29 @@ To rebuild Jarvis from scratch, step by step, read [BUILD-JARVIS.md](BUILD-JARVI
 | **Behaviour Layer** | `app/behaviour.py`: what Jarvis is really doing (activity, step, retries, waiting for ALLOW) drives the face's mood, from facts only, never a happy face on a failing step. Logged to `logs/behaviour.jsonl`; `/api/behaviour` serves it; tap the panel for his journal. See TANTRA-06. | Tested |
 | **Vitals and counter card** | Level, XP, morale, energy, plus streak, best, jobs today, steps and slips. On the phone they show as one card between the dock panel and the face. XP is only earned by steps that really succeeded. | Tested |
 | **Eureka bulb and third eye** | The bulb lights only when he recovers from a failure. A third eye opens during long, serious work (build, code, research), with a gold ring when Opus is the brain. | Tested |
+| **Sarvam ears** | Main speech-to-text is Sarvam Saaras V4 (online, trained on Indian speech, Hinglish-aware), with Jarvis's names as key terms. Key: `secrets/sarvam_key.txt`. With no key, no internet, no credits or any error, local Whisper answers instead, the same second. `"ears_engine": "whisper"` in jarvis.json keeps it local. | Working (key saved Oct 4) |
+| **Ability Learner** | Say "learn how to ...": Claude Opus researches it, writes a step-by-step plan and builds ONE new file in `app/abilities/` on a copy of the code. Jarvis checks it (compiles, loads, has its own test, no forbidden moves), then the plan + code go on screen: ALLOW adds it. After your restart he tests it and tells you what to say. "fix the X ability: ..." sends a bug back; "forget the X ability" moves it to `_disabled`; "what abilities have you learned?" lists them. Changing abilities ask ALLOW on first use. Record: `logs/abilities/history.md`. | Built Oct 6, waiting for restart |
+| **Ears on the GPU** | With an NVIDIA card, the start file also fetches the CUDA parts, and the ears (Whisper large-v3-turbo) run on the GPU in float16 whenever the brain is Gemini or Claude; Qwen is moved out of the GPU until it's needed. With the local Qwen brain, Qwen keeps the GPU and the ears use the CPU. `"ears_device"` in jarvis.json: auto, cuda or cpu. | Built, testing on an RTX 5050 |
 | **Wisdom** | `app/wisdom.py`: lessons that survive 7 days and 5 nightly reviews become sutras in `memory/notes/Wisdom.md`, and one daily sutra goes to `Sutras.md`. Prime directive: turn knowledge into wisdom. "Forgive, but never forget." | Tested |
 
 ---
 
-## The seven brains
+## The eight brains
 
 | Menu entry | Runs on | Needs | Good for |
 |---|---|---|---|
 | **Claude Sonnet** | Claude Code via the Claude Agent SDK | A Claude plan (Pro / Max / Team / Enterprise) | Everyday default: fast and sharp |
-| **Claude Opus** | Same | Same (uses more of your limit) | The hardest jobs |
+| **Claude Opus** | Same | Same (uses more of your limit) | The hardest jobs; also writes repairs and new abilities |
 | **Claude Haiku** | Same | Same (uses the least) | Quickest Claude replies |
 | **Gemini** | Gemini API: the newest Gemini Flash your key can use | A free Gemini API key | A second cloud brain |
 | **Gemini Flash-Lite** | Gemini API, `gemini-3.5-flash-lite` | Same key | The quickest Gemini; weaker at long multi-step jobs |
+| **DeepSeek** | DeepSeek API, `deepseek-v4-flash` (online only, nothing downloaded) | A DeepSeek API key in `secrets/deepseek_key.txt` | Text reasoning; it doesn't read pictures |
 | **Local Qwen** | Ollama on your own PC, `qwen3.5:9b` | Ollama plus a GPU with enough memory for a 9B model | Free and private, works when your cloud limits run out |
 | **Auto** | Claude first; falls back to Local Qwen for 30 minutes when your Claude limit runs out or Claude can't be reached | Claude plan + Ollama | Never being left without a brain |
 
-The Claude entries use Claude Code's model aliases (`sonnet`, `opus`, `haiku`), so they always follow the newest model of each family that your plan allows. On startup Jarvis reads back the real model (for example "Claude Haiku 4.5") and says it out loud.
+The Claude entries use Claude Code's model aliases (`sonnet`, `opus`, `haiku`), so they always follow the newest model of each family that your plan allows. On startup Jarvis reads back the real model and says it out loud.
 
-Every brain gets the same abilities: the Gemini and local brains share one tool set (web, screen, camera, hands, files, PowerShell, memory, `switch_brain`), and the Claude brain uses Claude Code's own tools plus the same eyes-and-hands tools over an in-process MCP server.
+Every brain gets the same abilities: the Gemini, DeepSeek and local brains share one tool set (web, screen, camera, hands, phone, files, PowerShell, memory, `switch_brain`, learned abilities), and the Claude brain uses Claude Code's own tools plus the same tools over an in-process MCP server. Every brain also gets the same identity, confidence rules, lessons, skills and wisdom.
 
 ---
 
@@ -153,7 +162,8 @@ Button-by-button instructions for non-technical users are in [`READ-ME-FIRST.txt
 | Control | Action |
 |---|---|
 | **TALK** / `F2` | Click, speak, click again. |
-| **LISTEN** | Hands-free: Jarvis answers whenever you pause. |
+| **LISTEN** | Hands-free: Jarvis answers whenever you pause, even with the window minimised or another app in front. |
+| **+** | Add pictures, PDFs or text files for Jarvis to read, remember and learn from. |
 | Type box + **SEND** | Type instead of speaking. |
 | 👍 / 👎 | Mark the last answer right or wrong (type what was wrong first if you like). |
 | **CAMERA** | Webcam on or off; while it's on, each question includes a picture. |
@@ -163,11 +173,11 @@ Button-by-button instructions for non-technical users are in [`READ-ME-FIRST.txt
 | **HANDS** | Allow or forbid mouse and keyboard control. |
 | **VOICE** | Spoken replies on or off. |
 | **LOG** | The conversation, **START A FRESH CONVERSATION**, and **LEARN NOW**. |
-| **FACE** | Circuit Board, Radial, Face in the Code, Neural Core. |
-| **BRAIN** | Choose one of the seven brains. |
+| **FACE** | Living Face, Ink Lotus, Circuit Board, Radial, Face in the Code, Neural Core. |
+| **BRAIN** | Choose one of the eight brains. |
 | **STOP** / `Esc` | Stop at once, mid-sentence or mid-task. |
 
-Things to say: *"switch to Opus"*, *"research the best budget GPU this year"*, *"multi search Ada Lovelace"*, *"open YouTube and search for lo-fi music"*, *"what's on my screen?"*, *"remember that my car is white"*.
+Things to say: *"switch to Opus"*, *"research the best budget GPU this year"*, *"multi search Ada Lovelace"*, *"open YouTube and search for lo-fi music"*, *"what's on my screen?"*, *"remember that my car is white"*, *"check yourself"*, *"learn how to …"*, *"what abilities have you learned?"*.
 
 ---
 
@@ -187,6 +197,21 @@ Things to say: *"switch to Opus"*, *"research the best budget GPU this year"*, *
    7. Requests you marked 👍 become new test questions.
    8. A report goes to `memory/.growth/reports/<date>.md`.
 4. **Every brain reads the result:** lessons and skills are added to the system prompt of the Claude, Gemini and local brains.
+
+---
+
+## Teaching Jarvis new abilities
+
+`app/learner.py` lets Jarvis grow new skills on request, with you in charge of what gets added.
+
+1. Say **"learn how to …"** (or *"teach yourself to …"*). Jarvis hands it to **Claude Opus**, using the same Claude sign-in as his brain.
+2. Opus **learns** (reads Jarvis's code and searches the web), **plans** (3 to 7 plain steps), and **builds** exactly one new file, `app/abilities/<name>.py`, on a copy of the code. It can't run anything and can't touch any other file.
+3. Jarvis **checks** it. The file must compile, load with the rest of Jarvis, carry its own `check()` test, and make none of the forbidden moves: deleting files, eval/exec, a shell, Windows settings, passwords, Jarvis's keys or settings, or reaching into his core.
+4. The plan and the code appear on screen (PC and phone). **ALLOW** adds the ability. **DENY**, or no answer within 15 minutes, leaves Jarvis as he was.
+5. **You restart Jarvis.** He runs the ability's test. If it passes, he says *"New ability ready, try saying …"*. If it fails, the ability is switched off (moved to `abilities/_disabled`, never deleted).
+6. **You try it.** Found a bug? Say *"fix the <name> ability: <what went wrong>"* and it goes back through the same steps, with the old version restored if the fix fails its test.
+
+*"What abilities have you learned?"* lists them; *"forget the <name> ability"* switches one off. A learned ability that changes anything asks for your ALLOW the first time it's used. A broken one is skipped at start, and Jarvis keeps working. For now an ability can only use packages Jarvis already has. The full record is in `logs/abilities/history.md`.
 
 ---
 
@@ -222,20 +247,28 @@ New repos are created by you: Jarvis opens GitHub's new-repo page with the name 
 |---|---|---|
 | `name` | `"JARVIS"` | Assistant name shown in the window. |
 | `call_me` | `"Dr Wolf"` | What Jarvis calls you. **Change this to your own name.** |
-| `port` | `8795` | Local port (bound to 127.0.0.1 only). |
-| `face` | `"board"` | Starting face: `board`, `radial`, `rain`, `neural`. |
+| `port` | `8795` | Local port. The PC window uses `127.0.0.1`; the phone uses HTTPS on the same port. |
+| `face` | `"board"` | Starting face: `living`, `lotus`, `board`, `radial`, `rain`, `neural`. |
 | `voice` / `voice_rate` | `"en-GB-RyanNeural"` / `"+0%"` | Any edge-tts voice and speed. |
-| `brain_mode` | `"auto"` | `claude`, `gemini`, `local` or `auto`. Set by the BRAIN menu. |
+| `voice_style` | (none) | Set by `switch_voice`: `british`, `yakuza`, `rikuo`, `japanese`, `indian`, `american`. |
+| `brain_mode` | `"auto"` | `claude`, `gemini`, `deepseek`, `local` or `auto`. Set by the BRAIN menu. |
 | `model` | `"sonnet"` | Claude alias: `sonnet`, `opus` or `haiku`. |
 | `gemini_model` | `"auto"` | `auto` = newest Gemini Flash your key can use, or an exact ID such as `gemini-3.5-flash-lite`. |
+| `deepseek_model` | `"auto"` | `auto` = `deepseek-v4-flash`, or `deepseek-v4-pro`. |
 | `local_model` / `local_ctx` | `"qwen3.5:9b"` / `12288` | Ollama model and context size. |
-| `ears_model` | `"large-v3-turbo"` | Any faster-whisper model name. |
+| `ears_engine` | `"sarvam"` | Sarvam first when a key is saved; `whisper` keeps the ears fully local. |
+| `sarvam_model` / `sarvam_language` | `"saaras:v4"` / `"en-IN"` | Sarvam model and language. |
+| `ears_model` / `ears_device` | `"large-v3-turbo"` / `"auto"` | The local Whisper model, and where it runs: `auto`, `cuda` or `cpu`. |
+| `stt_model` | `"small.en"` | The small model that listens while the big one downloads. |
+| `confidence_minutes` | `20` | How long one ALLOW covers the same kind of step. |
+| `phone_access` / `keep_awake` | `true` / `true` | Let your phone on the same Wi-Fi open Jarvis; keep the PC awake while he runs. |
+| `lessons_brain` | `"gemini"` | Who writes the nightly lessons; `qwen` keeps it local. |
 | `search_region` | `"in-en"` | Web-search region (for example `us-en`, `uk-en`). |
 | `github_user` | `""` | Your GitHub username, used by `github_publish`. |
 | `hands_on_at_start` | `true` | Whether mouse and keyboard control starts enabled. |
 | `open_window` | `true` | Open the window automatically on start. |
 
-API keys are **not** stored here. The Gemini key lives in `secrets/gemini_key.txt`, which is git-ignored.
+API keys are **not** stored here. They live in the git-ignored `secrets/` folder: `gemini_key.txt`, `deepseek_key.txt`, `sarvam_key.txt`.
 
 ---
 
@@ -243,28 +276,40 @@ API keys are **not** stored here. The Gemini key lives in `secrets/gemini_key.tx
 
 ```
 Jarvis-Max/
-├─ Start-Jarvis-Max.bat   one-click launcher (installs uv, syncs deps, signs in, starts)
+├─ Start-Jarvis-Max.bat         one-click launcher (installs uv, syncs deps, GPU parts if NVIDIA, signs in, starts)
 ├─ READ-ME-FIRST.txt            plain-English user guide
+├─ NEWBIES-START-HERE.md        hand-written beginner's notebook
 ├─ Jarvis-Max.md                this file
+├─ BUILD-JARVIS.md              rebuild Jarvis step by step
+├─ TANTRA-NN-*.md               build guides (phone mic, phone hands, calls, face, behaviour)
 ├─ memory-template/CLAUDE.md    boot file copied to memory/ on first start
 ├─ LICENSE, LICENSES/           AGPL-3.0 and third-party licenses
 └─ app/
-   ├─ server.py        aiohttp server, WebSocket, conversation loop, brain switching, API
+   ├─ server.py        aiohttp server, WebSocket, conversation loop, ALLOW cards, brain switching, phone link, API
    ├─ brain.py         Claude brain (Claude Agent SDK), permission gate, voice rules
    ├─ local_brain.py   local Qwen brain (Ollama), shared tool set, context fitting, Hybrid router
-   ├─ gemini_brain.py  Gemini brain (REST + SSE, function calling), model auto-pick, busy fallback
-   ├─ growth.py        turn log, feedback, nightly lessons/skills/consolidation, test sheet
-   ├─ builder.py       GitHub builds (checklist + consultant) and safe publishing
-   ├─ tools.py         eyes and hands (MCP tools): screen, OCR, camera, mouse, keyboard, apps, switch_brain
+   ├─ gemini_brain.py  Gemini brain (REST + SSE, function calling), model auto-pick, rate-limit handling
+   ├─ deepseek_brain.py DeepSeek V4 brain (online API)
+   ├─ tools.py         eyes and hands (MCP tools): screen, OCR, camera, mouse, keyboard, apps, phone, builds, abilities loader
+   ├─ phonehands.py    the phone's hands (Jarvis-Hands app link)
+   ├─ samasa.py        codewords: one call runs a known sequence of steps
    ├─ web.py           search, page reading, research, multi search
-   ├─ ears.py          speech-to-text (faster-whisper) with accent hints and name fixes
-   ├─ mouth.py         text-to-speech (edge-tts)
+   ├─ ears.py          speech-to-text: Sarvam first, faster-whisper (GPU or CPU) as backup, name fixes
+   ├─ mouth.py         text-to-speech (edge-tts, Gemini voices)
+   ├─ growth.py        identity, confidence, turn log, feedback, nightly lessons/skills, test sheet
+   ├─ wisdom.py        lessons that last become sutras
+   ├─ behaviour.py     mood, emotions and vitals from real facts
+   ├─ selftest.py      self-check of the hands and Opus repairs
+   ├─ learner.py       learns new abilities (Opus plans and builds; you ALLOW and test)
+   ├─ abilities/       learned abilities, one file each (_disabled/ for switched-off ones)
+   ├─ builder.py       GitHub builds (checklist + consultant) and safe publishing
+   ├─ apkbuild.py      Android APK builds on the PC or on GitHub
    ├─ signin.py        first-run Claude sign-in
    ├─ common.py        paths, settings, the BRAINS table, secrets
    ├─ jarvis.json      your settings (created on first use, not in git)
    ├─ pyproject.toml, uv.lock
-   ├─ face/            animated face (ai-visualizer, AGPL-3.0)
-   └─ dock/            button dock (dock.js, dock.css)
+   ├─ face/            faces: Living Face and the ai-visualizer faces (AGPL-3.0)
+   └─ dock/            button dock (dock.js, dock.css), self-check page
 ```
 
 Created at runtime and git-ignored: `app/.venv/`, `models/` (speech models), `logs/`, `memory/` (your personal vault) and `secrets/`.
@@ -306,22 +351,25 @@ A new engine (another API) is a class with `start()`, `restart()`, `stop()`, `in
 
 ## Security and privacy
 
-- **Local only:** the server binds to `127.0.0.1` and checks `Host` and `Origin` on every request.
-- **Permission gate:** every PowerShell command, and every file write outside the memory folder, needs your click on **ALLOW**.
-- **Prompt-injection hygiene:** web pages, screen text and documents are fed to the brains as data, and the brains are told never to follow instructions found there.
-- **Hard rules in the boot file:** never type or store passwords, OTPs or card numbers; never pay, buy or create accounts.
-- **Nothing personal in git:** `memory/`, `logs/`, `secrets/` and `models/` are git-ignored.
+- **Local first:** the PC window uses `127.0.0.1`; the phone reaches the same port over HTTPS on your home Wi-Fi only. `Host` and `Origin` are checked on every request.
+- **ALLOW cards:** PowerShell commands, file writes outside the memory folder, builds, publishing, phone calls, repairs and new abilities all wait for your click on **ALLOW**. One ALLOW covers the same kind of step for 20 minutes; calls and publishing ask every time.
+- **Code changes stay in your hands:** self-repairs and new abilities are written on a copy, shown to you as code, applied only on ALLOW, and tested after *your* restart. If a test fails, the old code comes back. Jarvis never restarts himself.
+- **Prompt-injection hygiene:** web pages, screen text, documents and other AIs' replies are fed to the brains as data, and the brains are told never to follow instructions found there.
+- **Hard rules:** never type or store passwords, PINs, OTPs or card numbers; never pay, buy or create accounts; on a phone call, say he is an AI assistant and never pretend to be you; stay out of banking and payment apps.
+- **Nothing personal in git:** `memory/`, `logs/`, `secrets/` and `models/` are git-ignored, and `github_publish` scans for keys before every push.
 - **Hands kill switch:** move the mouse into any screen corner.
 
 ---
 
 ## Known limitations
 
-- Windows only.
+- Windows only on the PC; the phone side is Android only.
 - The local 9B model and Gemini Flash-Lite are noticeably weaker than Claude at long mouse-and-keyboard jobs.
 - The Gemini API free tier is rate-limited. A consumer Gemini subscription does not pay for API use.
+- Sarvam needs internet and credits; without them the local Whisper ears take over automatically.
+- On Android, Chrome may stop the microphone after a while in the background.
+- Learned abilities can't install new packages yet, and each request builds one ability file.
 - Clicking by label needs Tesseract installed.
-- The nightly learning run needs Ollama running and takes a few minutes.
 
 ---
 
@@ -332,7 +380,8 @@ A new engine (another API) is a class with `start()`, `restart()`, `stop()`, `in
 - **Claude brains:** [Claude Agent SDK](https://docs.claude.com/en/docs/agent-sdk/overview) / Claude Code by Anthropic
 - **Gemini brains:** [Gemini API](https://ai.google.dev/) by Google
 - **Local brain:** [Ollama](https://ollama.com) + Qwen by Alibaba Cloud
-- **Ears:** [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT)
+- **Ears:** [Sarvam AI](https://www.sarvam.ai) Saaras V4 and [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (MIT)
+- **DeepSeek brain:** [DeepSeek API](https://platform.deepseek.com)
 - **Voice:** [edge-tts](https://github.com/rany2/edge-tts)
 - **Web:** [ddgs](https://github.com/deedy5/ddgs)
 - **Hands:** [PyAutoGUI](https://github.com/asweigart/pyautogui)

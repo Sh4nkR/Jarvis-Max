@@ -9,7 +9,7 @@ import logging
 import re
 import time
 
-from common import CFG
+from common import CFG, load_config
 
 log = logging.getLogger("jarvis.mouth")
 
@@ -157,7 +157,7 @@ class Mouth:
         if style not in VOICES:
             return "Voices I have: " + ", ".join(VOICES) + "."
         self.voice, rate, self.pitch = VOICES[style]
-        self.rate = rate or CFG["voice_rate"]
+        self.rate = rate or load_config().get("voice_rate") or CFG["voice_rate"]   # fresh, so a new speed applies
         self.style = style
         self._retry_at = 0.0
         self._gemini_off_until = 0.0

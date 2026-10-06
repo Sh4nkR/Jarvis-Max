@@ -32,20 +32,30 @@ THE BUTTONS
   VOICE     Spoken replies on or off.
   LOG       The whole conversation. There's a button at the bottom to start fresh.
   BRAIN     Pick Jarvis's brain: Claude Sonnet, Opus or Haiku (quickest), Gemini,
-            Gemini Flash-Lite (quickest Gemini, same key), Local Qwen (on this
-            PC) or Auto (Claude first, local when your Claude limit runs out).
+            Gemini Flash-Lite (quickest Gemini, same key), DeepSeek (needs a
+            DeepSeek key), Local Qwen (on this PC) or Auto (Claude first, local
+            when your Claude limit runs out).
             Jarvis restarts by itself (about 15 seconds) and then says which
             brain really came up. You can also just say "switch to Opus".
             Gemini asks once for a Gemini API key (free at aistudio.google.com/apikey);
             it's kept in the secrets folder and never goes to GitHub.
-  FACE      Switches between Jarvis four faces: Circuit Board, Radial,
-            Face in the Code and Neural Core.
+  FACE      Switches Jarvis's face: Living Face (the default), Ink Lotus,
+            Circuit Board, Radial, Face in the Code and Neural Core.
   THUMBS    Thumbs up = that answer was right. Thumbs down = wrong (type what was
             wrong in the box first if you like). Saying "no, I meant..." or
             "wrong" counts as thumbs down; "perfect" or "well done" as thumbs up.
   STOP      Stops Jarvis at once, mid-sentence or mid-task. Keyboard: Esc.
 
   The four chips at the top say whether BRAIN, EARS, VOICE and HANDS are ready.
+
+TEACH HIM SOMETHING NEW
+
+  Say "learn how to ..." and Claude Opus works out how, writes a short plan and
+  builds the new ability. The plan and the code show up on screen: ALLOW adds it.
+  Restart Jarvis; he tests it and tells you what to say to use it.
+  Something wrong with it? Say "fix the <name> ability" and what happened.
+  "What abilities have you learned?" lists them; "forget the <name> ability"
+  switches one off.
 
 EMERGENCY STOP FOR THE HANDS
   Push the mouse into any corner of the screen. That halts any mouse or keyboard

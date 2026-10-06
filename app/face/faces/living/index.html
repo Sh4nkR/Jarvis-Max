@@ -7,10 +7,10 @@
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{width:100%;height:100%;background:#03060c;overflow:hidden}
   canvas#stage{position:fixed;inset:0;width:100vw;height:100vh;display:block}
-  #hud{position:fixed;left:14px;top:70px;width:190px;font:600 11px 'Segoe UI',system-ui,sans-serif;color:#9fb3c8;
+  #hud{position:fixed;left:14px;top:70px;width:206px;font:600 11px 'Segoe UI',system-ui,sans-serif;color:#9fb3c8;
        letter-spacing:.08em;cursor:pointer;opacity:.85;z-index:5;user-select:none}
   #hud .row{display:flex;align-items:center;gap:6px;margin:5px 0}
-  #hud .lab{width:58px;opacity:.75}
+  #hud .lab{width:74px;opacity:.75}
   #hud .bar{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
   #hud .bar i{display:block;height:100%;border-radius:3px;transition:width .8s}
   #hud .lvl{font-size:20px;font-weight:700;letter-spacing:.05em;color:#e8f0ff}
@@ -31,7 +31,7 @@
   body.portrait #hud .lvl{font-size:5vw;white-space:nowrap}
   body.portrait #hud .m{display:flex;flex-direction:column;align-items:stretch;gap:.8vw;flex:1;min-width:0}
   body.portrait #hud .m .bar{display:block;width:100%;height:1.2vw;flex:none}
-  body.portrait #hud .tag{opacity:.75;white-space:nowrap}
+  body.portrait #hud .tag{opacity:.75;white-space:nowrap;letter-spacing:.01em;font-size:2.4vw}
   body.portrait #hud .tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:1.6vw;margin-top:2vw}
   body.portrait #hud .t{text-align:center;border:1px solid rgba(120,160,220,.15);border-radius:8px;padding:1.2vw 0;background:rgba(255,255,255,.03)}
   body.portrait #hud .t b{display:block;font-size:5.4vw;line-height:1.1;color:#e8f0ff}
@@ -312,19 +312,21 @@ function decide(now) {
   else if (m === "speaking") { if (now < bulbUntil) e = "eureka"; else { const mw = moodFromReply(JV().reply()); e = mw || (AV.env > .6 ? "joyful" : "happy"); } }
   else if (now < doneUntil) e = now < doneUntil - 1300 ? "exasperated" : rnd(["proud","relieved","phew"]);
   else {
-    const idleMin = (now - idleSince) / 60000;
-    if (idleMin > 10) e = "dozing";
+    const idleMin = (now - idleSince) / 60000, V = window.JV_VITALS || {};
+    const rest = EX[V.emotion] ? V.emotion : "calm", down = (V.pleasure || 0) < 0;   // his real feeling (emotion engine)
+    if (idleMin > 10) e = down ? rest : "dozing";
     else if (idleMin > 5) { e = "sleepy"; if (Math.random() < .002) yawnUntil = t + 2.2; if (t < yawnUntil) e = "yawning"; }
+    else if (down) e = rest;                     // no cheeky winks while he's genuinely low
     else { if (t > nextMicro) { nextMicro = t + 8 + Math.random() * 9;
         const pool = ["calm","serene","curious","amused","relaxed","thoughtful","playful","confident","wink","coy","pleasure","sceptical",
           "proud","content","daydreaming","dreamy","bored","cheeky","tongue","silly","sideeye","eyeroll","smug","grinning","licklips","bitelip","kiss","shrug","really","naughty"];
         do { idleMicro = rnd(pool); } while (recent.includes(idleMicro)); idleMicroUntil = t + 2.5; }
-      e = t < idleMicroUntil ? idleMicro : "calm"; }
+      e = t < idleMicroUntil ? idleMicro : rest; }
   }
   /* THE BEHAVIOUR LAYER WINS: real facts from the server (TANTRA-06) override every guess above */
   const B = window.JV_BEHAVE;
   if (B && !Q.get("shot")) {
-    const age = Date.now() / 1000 - B.t, endish = ["done","failed","lessons_done","allowed","denied","recovered"].includes(B.phase);
+    const age = Date.now() / 1000 - B.t, endish = ["done","failed","lessons_done","allowed","denied","recovered","praised","scolded"].includes(B.phase);
     if (age < (endish ? 4 : 15) && (endish || m !== "idle")) {
       const np = ACT2PROP[B.activity];
       if (np && !endish && np !== prop) { if (SND.prop[np]) SND.prop[np](); prop = np; propT = now; } else if (np) propT = now;
@@ -636,18 +638,21 @@ function hudTick(now) {
     const t = (n, lab, cls) => `<div class="t ${cls || ""}"><b>${n}</b><span>${lab}</span></div>`;
     hud.innerHTML = `<div class="top"><span class="lvl">LV ${v.level}</span>` + mb("XP", 100 * v.xp_in / v.xp_need, "#e3b341")
       + mb("MORALE", v.morale, v.morale > 60 ? "#3fb950" : v.morale > 40 ? "#e3b341" : "#f85149")
-      + mb("ENERGY", v.energy, v.energy > 40 ? "#39c5cf" : "#f0883e") + `</div>`
+      + mb("ENERGY", v.energy, v.energy > 40 ? "#39c5cf" : "#f0883e")
+      + mb("CONFIDENCE", v.confidence ?? 70, (v.confidence ?? 70) >= 60 ? "#a371f7" : "#f0883e") + `</div>`
       + `<div class="tiles">` + t(v.streak, "🔥 STREAK", "fire") + t(v.best_streak, "BEST") + t(v.jobs_today, "JOBS")
-      + t(v.steps_today, "STEPS") + t(v.fails_today, "SLIPS", v.fails_today ? "bad" : "") + `</div>`;
+      + (v.emotion ? t(String(v.emotion).toUpperCase(), "FEELING") : "") + t(v.steps_today, "STEPS") + t(v.fails_today, "SLIPS", v.fails_today ? "bad" : "") + `</div>`;
   } else
   hud.innerHTML = `<div class="lvl">LV ${v.level}</div>` + bar("XP", 100 * v.xp_in / v.xp_need, "#e3b341")
     + bar("MORALE", v.morale, v.morale > 60 ? "#3fb950" : v.morale > 40 ? "#e3b341" : "#f85149")
     + bar("ENERGY", v.energy, v.energy > 40 ? "#39c5cf" : "#f0883e")
+    + bar("CONFIDENCE", v.confidence ?? 70, (v.confidence ?? 70) >= 60 ? "#a371f7" : "#f0883e")
+    + (v.emotion ? `<div class="row sub">FEELING ${String(v.emotion).toUpperCase()}</div>` : "")
     + `<div class="row sub">STREAK ${v.streak} · BEST ${v.best_streak}</div><div class="row sub">TODAY ${v.jobs_today} jobs · ${v.steps_today} steps · ${v.fails_today} slips</div>`;
   const busy = B && B.busy_s && !["done","failed","lessons_done"].includes(B.phase) && Date.now() / 1000 - B.t < 15;
   stepEl.textContent = busy ? `${(B.label || "").toUpperCase()} · STEP ${B.step}${B.retries ? " · RETRY " + B.retries : ""}${B.fails_row ? " · " + B.fails_row + " FAILED" : ""} · ${B.busy_s}s` : "";
 }
-const ICON = { start:"▶", step:"•", step_ok:"✓", failed_step:"✗", recovered:"↺", allow:"✋", allowed:"✔", denied:"⛔", error:"☠", done:"★", failed:"✗", lessons_done:"🎓" };
+const ICON = { start:"▶", step:"•", step_ok:"✓", failed_step:"✗", recovered:"↺", allow:"✋", allowed:"✔", denied:"⛔", error:"☠", done:"★", failed:"✗", lessons_done:"🎓", praised:"👍", scolded:"👎", mood:"~" };
 async function openJournal() {
   if (jr.style.display === "block") { jr.style.display = "none"; return; }
   jr.style.display = "block"; jr.innerHTML = "<h3>JOURNAL</h3>Loading…";

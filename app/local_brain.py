@@ -638,8 +638,8 @@ REST = 30 * 60                      # after Claude's limit runs out, stay local 
 class Hybrid:
     """Looks like one brain to the server. Claude first; the local brain when Claude is out."""
 
-    def __init__(self, claude, local: LocalBrain, gemini=None):
-        self.claude, self.local, self.gemini = claude, local, gemini
+    def __init__(self, claude, local: LocalBrain, gemini=None, deepseek=None):
+        self.claude, self.local, self.gemini, self.deepseek = claude, local, gemini, deepseek
         self._net = (0.0, True)             # (checked at, online?)
         self._claude_back_at = 0.0          # Claude's limit ran out: local until then
         self.current = claude
@@ -668,6 +668,8 @@ class Hybrid:
         mode, net_ok = self._mode(), self._net[1]
         if mode == "gemini" and self.gemini:
             return self.gemini.status
+        if mode == "deepseek" and self.deepseek:
+            return self.deepseek.status
         if (mode == "claude" or (mode == "auto" and not self._resting())) \
                 and self.claude.status in ("ready", "signin") and net_ok:
             return self.claude.status               # online: keep the SIGN IN button visible
@@ -680,11 +682,14 @@ class Hybrid:
         mode = self._mode()
         if mode == "gemini" and self.gemini:
             return self.gemini.error
+        if mode == "deepseek" and self.deepseek:
+            return self.deepseek.error
         return (self.local.error if mode == "local" else self.claude.error or self.local.error)
 
     @property
     def busy(self) -> bool:
-        return self.claude.busy or self.local.busy or bool(self.gemini and self.gemini.busy)
+        return (self.claude.busy or self.local.busy or bool(self.gemini and self.gemini.busy)
+                or bool(self.deepseek and self.deepseek.busy))
 
     async def interrupt(self):
         await self.current.interrupt()
@@ -696,6 +701,8 @@ class Hybrid:
         await self.local.restart()
         if self.gemini and self.gemini.status != "needs_key":
             await self.gemini.restart()
+        if self.deepseek and self.deepseek.status != "needs_key":
+            await self.deepseek.restart()
         if self.claude.status == "ready":
             await self.claude.restart()
 
@@ -704,6 +711,11 @@ class Hybrid:
         if mode == "gemini" and self.gemini:
             self.current = self.gemini
             async for ev in self.gemini.ask(text, images):
+                yield ev
+            return
+        if mode == "deepseek" and self.deepseek:
+            self.current = self.deepseek
+            async for ev in self.deepseek.ask(text, images):
                 yield ev
             return
         use_claude = mode == "claude" or (mode == "auto" and not self._resting()

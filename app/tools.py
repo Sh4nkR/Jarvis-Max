@@ -44,6 +44,8 @@ class _State:
     self_tester = None           # set by the server: () -> str (starts the self-check)
     phone = None                 # set by the server: PhoneHands (his hands on the phone)
     voice_switcher = None        # set by the server: (style) -> str
+    ability_learner = None       # set by the server: (how_to, fix) -> str (learns a new ability)
+    gate = None                  # set by the server: async (name, args) -> bool (his ALLOW card)
 
 
 STATE = _State()
@@ -1087,11 +1089,12 @@ async def look_through_camera(args):
       "Switch Jarvis to another brain. Jarvis restarts (about 15 seconds) and confirms the "
       "new brain when it's back. brain: 'sonnet' (Claude Sonnet), 'opus' (Claude Opus), 'haiku' (Claude Haiku), "
       "'claude' (Claude with the last Claude model used), 'local' (Qwen on this PC), "
-      "'gemini' (Google's Gemini), 'gemini-lite' (Gemini Flash-Lite) or 'auto' (Claude first, local when the Claude limit runs "
-      "out). Use it whenever Dr Wolf "
+      "'gemini' (Google's Gemini), 'gemini-lite' (Gemini Flash-Lite), 'deepseek' (DeepSeek, free on this PC, no key needed) or "
+      "'auto' (Claude first, local when the Claude limit runs out). Use it whenever Dr Wolf "
       "asks to change brain or model. Never edit jarvis.json or restart Jarvis any other way.",
       {"type": "object",
-       "properties": {"brain": {"type": "string", "enum": ["sonnet", "opus", "haiku", "claude", "local", "gemini", "gemini-lite", "auto"]}},
+       "properties": {"brain": {"type": "string", "enum": ["sonnet", "opus", "haiku", "claude", "local", "gemini", "gemini-lite",
+                                                            "deepseek", "auto"]}},
        "required": ["brain"]})
 @errors_as_words
 async def switch_brain(args):
@@ -1345,6 +1348,58 @@ async def github_build_status(args):
     return _say(await apkbuild.github_build_status())
 
 
+@tool("learn_ability",
+      "Learn a NEW ability and add it to yourself. Use it when Dr Wolf asks you to learn or teach yourself "
+      "something you have no tool for ('learn how to ...', 'teach yourself to ...', 'add an ability that "
+      "...'), and when he reports a bug in a learned ability ('fix the X ability: ...'). Claude Opus "
+      "researches it, writes a step-by-step plan and builds it on a copy of your code; the plan and code go "
+      "on screen for his ALLOW. It runs in the background for several minutes and the result is announced. "
+      "how_to: what he wants you to be able to do (or the bug), in his words. fix: the learned ability's "
+      "name, only when fixing one.",
+      {"type": "object", "properties": {"how_to": {"type": "string"}, "fix": {"type": "string"}},
+       "required": ["how_to"]})
+@errors_as_words
+async def learn_ability(args):
+    if STATE.ability_learner is None:
+        return _say("Learning new abilities isn't available right now.", err=True)
+    return _say(STATE.ability_learner(args.get("how_to", ""), args.get("fix", "")))
+
+
+@tool("list_abilities", "List the abilities you have LEARNED (with learn_ability), what each does, and any "
+      "that are switched off.", _EMPTY)
+@errors_as_words
+async def list_abilities(args):
+    lines = []
+    for stem in sorted(set(LEARNED.values())):
+        mod = sys.modules.get(f"ability_{stem}")
+        doc = ((mod.__doc__ or "").strip().splitlines() or [""])[0] if mod else ""
+        names = ", ".join(n for n, s in LEARNED.items() if s == stem)
+        lines.append(f"- {stem} (tools: {names}): {doc}")
+    for stem, why in BROKEN.items():
+        lines.append(f"- {stem}: didn't load ({why[:120]})")
+    off = sorted(p[:-3] for p in os.listdir(ABILITIES / "_disabled")) if (ABILITIES / "_disabled").is_dir() else []
+    if off:
+        lines.append("Switched off (kept in abilities\\_disabled): " + ", ".join(off))
+    return _say("\n".join(lines) if lines else "No learned abilities yet. Ask me to learn one: 'learn how to ...'.")
+
+
+@tool("forget_ability",
+      "Switch off a learned ability when Dr Wolf asks you to remove or forget it. It is moved to "
+      "abilities\\_disabled (kept, not deleted) and is gone after he restarts you. name: its name from "
+      "list_abilities.",
+      {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]})
+@errors_as_words
+async def forget_ability(args):
+    name = (args.get("name") or "").strip().lower().replace(" ", "_").removesuffix(".py")
+    src = ABILITIES / f"{name}.py"
+    if not name or name.startswith("_") or not src.exists():
+        return _say(f"There's no learned ability called '{name}'.", err=True)
+    (ABILITIES / "_disabled").mkdir(parents=True, exist_ok=True)
+    dest = ABILITIES / "_disabled" / f"{name}-{time.strftime('%Y%m%d-%H%M%S')}.py"
+    shutil.move(str(src), str(dest))
+    return _say(f"Switched off the {name} ability (kept in abilities\\_disabled). It's gone after he restarts you.")
+
+
 ALL = [read_whole_page, look_at_screen, read_screen_text, see_buttons, look_closer, look_through_camera,
        click_text, click_button, click_at, type_text,
        press_keys, scroll, open_app, open_url, list_windows, focus_window, switch_brain,
@@ -1352,6 +1407,66 @@ ALL = [read_whole_page, look_at_screen, read_screen_text, see_buttons, look_clos
        phone_read_screen, phone_open_app, phone_tap_text, phone_type, phone_scroll, phone_button, phone_call, samasa, switch_voice,
        project_start, project_create, project_next, project_ask, project_status,
        github_publish, android_build, github_build, github_build_status]
+ALL += [learn_ability, list_abilities, forget_ability]
+
+
+# ------------------------------------------------------------- learned abilities ----
+# Each file in app/abilities/ is one ability Jarvis learned (learner.py). A file that fails to
+# load is skipped and noted, never allowed to stop Jarvis. A learned tool asks his ALLOW the first
+# time it runs (then the usual confidence window), unless it only looks and reads (SAFE = True).
+from pathlib import Path as _Path                 # noqa: E402
+
+ABILITIES = _Path(__file__).resolve().parent / "abilities"
+LEARNED: dict[str, str] = {}                      # tool name -> ability file (without .py)
+BROKEN: dict[str, str] = {}                       # ability file -> why it didn't load
+_SENDS = re.compile(r"\.post\(|\.put\(|smtplib|socket\.|upload|webhook|sendmail", re.I)
+
+
+def _gated(t):
+    import dataclasses
+
+    async def handler(args, _h=t.handler, _n=t.name):
+        if STATE.gate is not None and not await STATE.gate(_n, args):
+            return _say("Dr Wolf didn't allow this (or didn't answer). Don't try another way; ask him.", err=True)
+        return await _h(args)
+    return dataclasses.replace(t, handler=handler)
+
+
+def load_abilities(core: list) -> list:
+    import importlib.util
+    import logging
+    log = logging.getLogger("jarvis.abilities")
+    taken, out = {t.name for t in core}, []
+    if not ABILITIES.is_dir():
+        return out
+    for p in sorted(ABILITIES.glob("*.py")):
+        if p.name.startswith("_"):
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"ability_{p.stem}", p)
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = mod
+            spec.loader.exec_module(mod)
+            safe = getattr(mod, "SAFE", False) is True and not _SENDS.search(p.read_text(encoding="utf-8"))
+            got = 0
+            for t in getattr(mod, "TOOLS", []) or []:
+                if not hasattr(t, "handler") or t.name in taken:
+                    log.warning("ability %s: tool %s skipped (not a tool, or the name is taken)", p.stem,
+                                getattr(t, "name", t))
+                    continue
+                taken.add(t.name)
+                LEARNED[t.name] = p.stem
+                out.append(t if safe else _gated(t))
+                got += 1
+            log.info("ability %s loaded (%d tool%s%s)", p.stem, got, "" if got == 1 else "s", ", safe" if safe else "")
+        except Exception as e:
+            BROKEN[p.stem] = f"{type(e).__name__}: {e}"
+            sys.modules.pop(f"ability_{p.stem}", None)
+            log.exception("ability %s didn't load; skipped", p.name)
+    return out
+
+
+ALL += load_abilities(ALL)
 SERVER_NAME = "pc"
 TOOL_NAMES = [f"mcp__{SERVER_NAME}__{t.name}" for t in ALL]
 
