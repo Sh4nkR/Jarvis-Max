@@ -25,11 +25,11 @@ straight into Jarvis's ears. Digital, clean, nothing on speaker. Dr Wolf can lis
    - mouth.py: in call mode, play voice to `call_voice_device` (and to his headphones).
    - ears: in call mode, listen continuously on `call_ears_device` with the hands-free pause detection.
    - tool `call_mode on/off`; tool `pc_call who=...` dials through Phone Link (search contact, click Call) using PC hands.
-   - The conversation rules are in memory/notes/skills/Phone Call On My Behalf.md (introduce as AI assistant, stick to brief, summary after).
+   - The conversation rules are in memory/notes/skills/Phone Call On My Behalf.md (introduce as an AI agent, stick to brief, summary after).
 4. Builder: restart, set the Windows sound devices as wired above (Settings > Sound > communication devices).
 5. TEST: call Dr Wolf's own second number or a friend who knows. PASS = they hear Jarvis clearly, Jarvis answers what they say, no echo.
 
 ## LIMITS (honest)
-- Calls come from his real SIM via the phone, so caller ID is his number; Jarvis must say it's an AI assistant.
+- Calls come from his real SIM via the phone, so caller ID is his number; Jarvis must say it's an AI agent.
 - Phone Link + Bluetooth must stay connected; phone within Bluetooth range of the PC.
 - Alternative later (paid): a cloud phone number (e.g. Exotel/Twilio) with an AI voice agent, no phone needed.

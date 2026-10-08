@@ -36,7 +36,7 @@ log = logging.getLogger("jarvis.local")
 
 OLLAMA = "http://127.0.0.1:11434"
 DEFAULT_MODEL = "qwen3.5:9b"
-DEFAULT_CTX = 12288                 # tokens of working memory; "local_ctx" in jarvis.json changes it
+DEFAULT_CTX = 16384                 # tokens of working memory; "local_ctx" in jarvis.json changes it
 REPLY_ROOM = 1200                   # kept free for the answer
 IMAGE_TOKENS = 700                  # roughly what one 1024-px screenshot costs
 IMAGE_WIDTH = 1024
@@ -638,8 +638,8 @@ REST = 30 * 60                      # after Claude's limit runs out, stay local 
 class Hybrid:
     """Looks like one brain to the server. Claude first; the local brain when Claude is out."""
 
-    def __init__(self, claude, local: LocalBrain, gemini=None, deepseek=None):
-        self.claude, self.local, self.gemini, self.deepseek = claude, local, gemini, deepseek
+    def __init__(self, claude, local: LocalBrain, gemini=None, deepseek=None, kimi=None):
+        self.claude, self.local, self.gemini, self.deepseek, self.kimi = claude, local, gemini, deepseek, kimi
         self._net = (0.0, True)             # (checked at, online?)
         self._claude_back_at = 0.0          # Claude's limit ran out: local until then
         self.current = claude
@@ -670,6 +670,8 @@ class Hybrid:
             return self.gemini.status
         if mode == "deepseek" and self.deepseek:
             return self.deepseek.status
+        if mode == "kimi" and self.kimi:
+            return self.kimi.status
         if (mode == "claude" or (mode == "auto" and not self._resting())) \
                 and self.claude.status in ("ready", "signin") and net_ok:
             return self.claude.status               # online: keep the SIGN IN button visible
@@ -684,12 +686,14 @@ class Hybrid:
             return self.gemini.error
         if mode == "deepseek" and self.deepseek:
             return self.deepseek.error
+        if mode == "kimi" and self.kimi:
+            return self.kimi.error
         return (self.local.error if mode == "local" else self.claude.error or self.local.error)
 
     @property
     def busy(self) -> bool:
         return (self.claude.busy or self.local.busy or bool(self.gemini and self.gemini.busy)
-                or bool(self.deepseek and self.deepseek.busy))
+                or bool(self.deepseek and self.deepseek.busy) or bool(self.kimi and self.kimi.busy))
 
     async def interrupt(self):
         await self.current.interrupt()
@@ -703,6 +707,8 @@ class Hybrid:
             await self.gemini.restart()
         if self.deepseek and self.deepseek.status != "needs_key":
             await self.deepseek.restart()
+        if self.kimi and self.kimi.status != "needs_key":
+            await self.kimi.restart()
         if self.claude.status == "ready":
             await self.claude.restart()
 
@@ -716,6 +722,11 @@ class Hybrid:
         if mode == "deepseek" and self.deepseek:
             self.current = self.deepseek
             async for ev in self.deepseek.ask(text, images):
+                yield ev
+            return
+        if mode == "kimi" and self.kimi:
+            self.current = self.kimi
+            async for ev in self.kimi.ask(text, images):
                 yield ev
             return
         use_claude = mode == "claude" or (mode == "auto" and not self._resting()

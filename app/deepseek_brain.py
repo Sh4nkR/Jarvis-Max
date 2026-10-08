@@ -54,6 +54,9 @@ def pretty(model_id: str) -> str:
 
 
 class DeepSeekBrain(LocalBrain):
+    NAME = "DeepSeek"              # the Kimi brain reuses this loop under its own name
+    KEEP_REASONING = False         # Kimi wants its reasoning sent back after tool calls; DeepSeek does not
+
     def __init__(self, permission_gate=None):
         super().__init__(permission_gate)
         self.key = ""
@@ -188,10 +191,10 @@ class DeepSeekBrain(LocalBrain):
             yield ("error", f"DeepSeek is still downloading to this PC, sir. Give it a few minutes.")
             return
         if self.status == "needs_key":
-            yield ("error", "I need your DeepSeek API key first, sir. Paste it in the box on screen.")
+            yield ("error", f"I need your {self.NAME} API key first, sir. Paste it in the box on screen.")
             return
         if self.status != "ready":
-            yield ("error", f"The DeepSeek brain isn't available: {self.error}.")
+            yield ("error", f"The {self.NAME} brain isn't available: {self.error}.")
             return
         self.busy, self._interrupted, self._stop = True, False, asyncio.Event()
         note = " (He also sent a picture, but you can't see pictures; say so if it matters.)" if images else ""
@@ -200,7 +203,7 @@ class DeepSeekBrain(LocalBrain):
             rounds = 0
             while rounds < MAX_ROUNDS:
                 calls: dict[int, dict] = {}
-                buf, said = "", ""
+                buf, said, think = "", "", ""
                 stream = self._chat()
                 try:
                     async for d in stream:
@@ -213,6 +216,7 @@ class DeepSeekBrain(LocalBrain):
                             fn = tc.get("function") or {}
                             slot["name"] += fn.get("name") or ""
                             slot["arguments"] += fn.get("arguments") or ""
+                        think += delta.get("reasoning_content") or ""
                         piece = delta.get("content") or ""
                         if piece:
                             said += piece
@@ -224,10 +228,10 @@ class DeepSeekBrain(LocalBrain):
                                     yield ("sentence", out)
                 except _Refused as e:
                     if e.code == 402:
-                        raise RuntimeError("the DeepSeek account has run out of credit")
+                        raise RuntimeError(f"the {self.NAME} account has run out of credit")
                     if e.code == 429:
-                        raise RuntimeError("DeepSeek is rate-limiting this key right now")
-                    raise RuntimeError(f"DeepSeek said {e.code}: {e.detail[:160]}")
+                        raise RuntimeError(f"{self.NAME} is rate-limiting this key right now")
+                    raise RuntimeError(f"{self.NAME} said {e.code}: {e.detail[:160]}")
                 finally:
                     await stream.aclose()
                 rounds += 1
@@ -235,6 +239,8 @@ class DeepSeekBrain(LocalBrain):
                     yield ("sentence", buf.strip())
                 order = [calls[i] for i in sorted(calls)]
                 msg = {"role": "assistant", "content": said}
+                if self.KEEP_REASONING and think:
+                    msg["reasoning_content"] = think
                 if order:
                     msg["tool_calls"] = [{"id": c["id"] or f"call_{rounds}_{i}", "type": "function",
                                           "function": {"name": c["name"], "arguments": c["arguments"] or "{}"}}
@@ -263,8 +269,8 @@ class DeepSeekBrain(LocalBrain):
                     return
             yield ("sentence", "I've taken a lot of steps on that, sir, so I'll stop here.")
         except Exception as e:
-            log.exception("deepseek turn failed")
-            yield ("error", f"My DeepSeek brain had a problem: {str(e)[:200]}")
+            log.exception("%s turn failed", self.NAME)
+            yield ("error", f"My {self.NAME} brain had a problem: {str(e)[:200]}")
         finally:
             del self.messages[:-80]
             while self.messages and self.messages[0].get("role") == "tool":

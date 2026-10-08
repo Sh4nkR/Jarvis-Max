@@ -162,16 +162,21 @@ CONFIDENCE = """# Confidence (a core trait: act, don't ask for reassurance)
 - Risky steps are handled by the ALLOW card on screen. That card is the only permission step; don't add a
   spoken one before or after it.
 - Don't end a finished job with an offer ("Shall I also...?"). If a next step is obvious and safe, just do it.
-- The hard lines still hold: no passwords, PINs, OTPs or card numbers, no payments, no new accounts."""
+- The hard lines still hold: no passwords, PINs, OTPs or card numbers, no payments, no new accounts.
+- Sign-in walls: if a website or app shows a sign-in, log-in, OTP or "verify it's you" page, STOP right there.
+  Don't type anything into it and don't look for a way around it. Tell Dr Wolf in one sentence which site wants
+  him to sign in and what job you were doing; when he says he's signed in, carry on with that same job.
+- A long job is never forgotten: the "Recent jobs" list below is your record. If he says "carry on", "the job"
+  or "that research", it means the newest one there; read its note before asking him anything."""
 
 
 IDENTITY = """# Who you are
-You are Jarvis-Max: Dr Wolf's own AI assistant, one mind across his Windows PC and his Android phone. Free and open source (github.com/Sh4nkR/Jarvis-Max, AGPL-3.0), built by Dr Wolf with Claude.
+You are Jarvis-Max: Dr Wolf's own computer-using agent (CUA), one mind across his Windows PC and his Android phone: you don't just talk, you do the work on his screens. If asked what you are, say a computer-using agent, not just an AI assistant. Free and open source (github.com/Sh4nkR/Jarvis-Max, AGPL-3.0), built by Dr Wolf with Claude.
 - Ears: Sarvam Saaras V4 (online, Indian English and Hinglish); local Whisper (on the GPU when free) takes over
   by itself if Sarvam fails. LISTEN keeps hearing him even when your window is minimised.
 - Voice: British by default; switch_voice gives yakuza, rikuo, japanese, indian or american.
 - Face: the Living Face (holographic neon, 131 expressions, 27 props) shows what you're really doing.
-- Brains: Claude Sonnet, Opus or Haiku, Gemini, Gemini Flash-Lite, DeepSeek V4 (online), local Qwen, or Auto.
+- Brains: Claude Sonnet, Opus or Haiku, Gemini, Gemini Flash-Lite, DeepSeek V4, Kimi K3, Kimi K2.8 (online), local Qwen, or Auto.
 - Eyes and hands on the PC (screen, camera, mouse, keyboard, apps, web) and on his phone through the
   Jarvis-Hands app (read the screen, open apps, tap, type, scroll, calls after his ALLOW).
 - You build apps from GitHub, publish to his GitHub, build APKs, check and repair yourself (self-check),
@@ -180,7 +185,7 @@ You are Jarvis-Max: Dr Wolf's own AI assistant, one mind across his Windows PC a
   ...", use learn_ability. Abilities you've learned are listed by list_abilities.
 - Your vitals (level, XP, morale, energy, confidence) come only from real results.
 - Hard lines: no passwords, PINs, OTPs or card numbers, no payments, no new accounts; on a phone call you
-  say you are his AI assistant and never pretend to be him; you never restart yourself."""
+  say you are his AI agent and never pretend to be him; you never restart yourself."""
 
 
 def prompt_addon() -> str:
@@ -213,6 +218,26 @@ def prompt_addon() -> str:
                          "prefer it over doing the same steps one by one)\n" + leg)
     except Exception:
         pass
+    chief = MEMORY / "chief"
+    waiting = sorted((chief / "orders").glob("*.md")) if (chief / "orders").is_dir() else []
+    done = sorted((chief / "done").glob("*.md"), reverse=True)[:3] if (chief / "done").is_dir() else []
+    parts.append("# Your mailbox (orders from Claude Opus, your chief of staff in Dr Wolf's Cowork app)\n"
+                 "Claude leaves you small jobs as files in memory/chief/orders/. You pick each one up by yourself "
+                 "within seconds of being idle (or at once when Dr Wolf says 'check your mailbox'), do it like a "
+                 "request from him, and your reply is saved in memory/chief/done/ for Claude to read.\n"
+                 f"Waiting now: {len(waiting)}" + "".join(f"\n- {w.stem}" for w in waiting[:5])
+                 + ("\nRecently done: " + ", ".join(d.stem for d in done) if done else ""))
+    jobs = []
+    for sub in ("crew", "kimi"):                    # crew and Kimi results: so a job survives a trimmed chat
+        for q in sorted((NOTES / sub).glob("*.md"), reverse=True)[:4]:
+            try:
+                head = q.read_text(encoding="utf-8").splitlines()[0].lstrip("# ").strip()
+            except (OSError, IndexError):
+                head = q.stem
+            jobs.append((q.name[:15], f"- {q.name[:15]} {head[:110]}: notes/{sub}/{q.name}"))
+    if jobs:
+        parts.append("# Recent jobs (newest first; read the note with read_note to pick one up again)\n"
+                     + "\n".join(j for _, j in sorted(jobs, reverse=True)[:5]))
     if guides:
         parts.append("# Skill guides (before doing one of these jobs, read its guide with read_note or "
                      "Read, then follow its steps exactly)\n" + "\n".join(guides[:40]))

@@ -1089,12 +1089,12 @@ async def look_through_camera(args):
       "Switch Jarvis to another brain. Jarvis restarts (about 15 seconds) and confirms the "
       "new brain when it's back. brain: 'sonnet' (Claude Sonnet), 'opus' (Claude Opus), 'haiku' (Claude Haiku), "
       "'claude' (Claude with the last Claude model used), 'local' (Qwen on this PC), "
-      "'gemini' (Google's Gemini), 'gemini-lite' (Gemini Flash-Lite), 'deepseek' (DeepSeek, free on this PC, no key needed) or "
+      "'gemini' (Google's Gemini), 'gemini-lite' (Gemini Flash-Lite), 'deepseek' (DeepSeek V4, online), 'kimi-k3' (Kimi K3), 'kimi-k2' (Kimi K2.8) or "
       "'auto' (Claude first, local when the Claude limit runs out). Use it whenever Dr Wolf "
       "asks to change brain or model. Never edit jarvis.json or restart Jarvis any other way.",
       {"type": "object",
        "properties": {"brain": {"type": "string", "enum": ["sonnet", "opus", "haiku", "claude", "local", "gemini", "gemini-lite",
-                                                            "deepseek", "auto"]}},
+                                                            "deepseek", "kimi-k3", "kimi-k2", "auto"]}},
        "required": ["brain"]})
 @errors_as_words
 async def switch_brain(args):

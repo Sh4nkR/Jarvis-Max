@@ -666,7 +666,18 @@ async def github_publish(folder: str, repo: str, private: bool = False, message:
     if code and re.search(r"rejected|fetch first|non-fast-forward", out):
         await git(["fetch", remote, "main"], d)
         n = (await git(["rev-list", "--count", f"{remote}/main"], d))[1]
-        if n.isdigit() and int(n) <= 3:                 # just GitHub's starter README/LICENSE
+        related = (await git(["merge-base", "HEAD", f"{remote}/main"], d))[0] == 0
+        if related:
+            # GitHub has commits this PC hasn't seen yet (made on the website, or from another PC):
+            # merge them in the normal way, which keeps both sides. Any clash is undone at once and
+            # nothing is pushed, so work on GitHub is never overwritten.
+            mcode, mout = await git(["merge", "--no-edit", f"{remote}/main"], d)
+            if mcode:
+                await git(["merge", "--abort"], d)
+                return (f"{url} has changes made elsewhere that clash with the files on this PC, so I "
+                        "stopped: nothing was pushed or overwritten. Tell him.")
+            code, out = await git(["push", "-u", remote, "HEAD:main"], d)
+        elif n.isdigit() and int(n) <= 3:               # a new repo with just GitHub's starter README/LICENSE
             await git(["merge", "--allow-unrelated-histories", "-X", "ours", "--no-edit", f"{remote}/main"], d)
             code, out = await git(["push", "-u", remote, "HEAD:main"], d)
         else:

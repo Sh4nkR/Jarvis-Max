@@ -45,6 +45,7 @@ from mouth import Mouth                         # noqa: E402
 from local_brain import Hybrid, LocalBrain      # noqa: E402
 from gemini_brain import KEY_FILE, GeminiBrain, pretty as gemini_pretty  # noqa: E402
 from deepseek_brain import KEY_FILE as DS_KEY_FILE, DeepSeekBrain, pretty as deepseek_pretty  # noqa: E402
+from kimi_brain import KEY_FILE as KIMI_KEY_FILE, KimiBrain, pretty as kimi_pretty  # noqa: E402
 import growth                                   # noqa: E402
 import builder                                  # noqa: E402
 import selftest                                 # noqa: E402
@@ -59,7 +60,7 @@ PHONE = bool(CFG.get("phone_access", True))        # his phone on the same Wi-Fi
 TLS_PORT = PORT + 1                                # the Jarvis Hands app connects here over HTTPS
 FACE_DIR = (APP / "face").resolve()
 DOCK_DIR = (APP / "dock").resolve()
-FACES = ["living", "lotus", "board", "radial", "rain", "neural"]
+FACES = ["living", "wolf", "lotus", "board", "radial", "rain", "neural"]
 INJECT = ('<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, '
           'viewport-fit=cover, interactive-widget=resizes-content">\n'
           '<meta name="theme-color" content="#020705">\n'
@@ -247,6 +248,8 @@ def brain_name() -> str:
         return gemini_pretty(GEMINI.model_id).upper() if GEMINI.model_id else "GEMINI"
     if choice == "deepseek":
         return deepseek_pretty(DEEPSEEK.model_id).upper()
+    if choice.startswith("kimi"):
+        return kimi_pretty(KIMI.model_id).upper() if KIMI.model_id else BRAINS[choice]["label"].upper()
     if choice == "auto":
         return "AUTO · " + ("LOCAL" if BRAIN.status == "local" else claude)
     return claude
@@ -349,7 +352,8 @@ CLAUDE.on_model = lambda: push_status()
 LOCAL = LocalBrain(permission_gate)
 GEMINI = GeminiBrain(permission_gate)
 DEEPSEEK = DeepSeekBrain(permission_gate)
-BRAIN = Hybrid(CLAUDE, LOCAL, GEMINI, DEEPSEEK)  # routes each request to the brain he picked
+KIMI = KimiBrain(permission_gate)
+BRAIN = Hybrid(CLAUDE, LOCAL, GEMINI, DEEPSEEK, KIMI)  # routes each request to the brain he picked
 TURNLOG = growth.TurnLog()
 BEHAVE = behaviour.Behaviour(lambda ev: HUB.send(ev), LOGS)   # the observable behaviour layer (TANTRA-06)
 GROWTH = growth.Growth()
@@ -364,6 +368,8 @@ def answered_by() -> str:
         return GEMINI.model_id or "gemini"
     if cur is DEEPSEEK:
         return DEEPSEEK.model_id or "deepseek"
+    if cur is KIMI:
+        return KIMI.model_id or "kimi"
     if cur is LOCAL:
         return "local " + LOCAL.model
     return CLAUDE.model_id or "claude"
@@ -502,7 +508,9 @@ async def request_switch(choice: str, from_button: bool = False) -> str:
         choice = "opus" if "opus" in m else "haiku" if "haiku" in m else "sonnet"
     choice = {"gemini lite": "gemini-lite", "flash-lite": "gemini-lite", "flash lite": "gemini-lite",
               "gemini flash-lite": "gemini-lite", "gemini flash lite": "gemini-lite",
-              "deep seek": "deepseek", "deep-seek": "deepseek"}.get(choice, choice)
+              "deep seek": "deepseek", "deep-seek": "deepseek",
+              "kimi": "kimi-k3", "kimi k3": "kimi-k3", "kimi-k 3": "kimi-k3", "k3": "kimi-k3",
+              "kimi k2": "kimi-k2", "kimi k2.8": "kimi-k2", "kimi-k2.8": "kimi-k2", "k2.8": "kimi-k2"}.get(choice, choice)
     if choice not in BRAINS:
         return f"'{choice}' isn't a brain I know. The choices are {', '.join(BRAINS)}."
     if SWITCH["choice"]:
@@ -531,7 +539,7 @@ async def _restart_brains(choice: str, wait_for_turn: bool):
     log.info("restarting the brains for %s", BRAINS[choice]["label"])
     try:
         BRAIN._claude_back_at = 0.0             # a fresh start forgets "Claude's limit ran out"
-        await asyncio.gather(start_brain(), LOCAL.restart(), GEMINI.restart(), DEEPSEEK.restart(),
+        await asyncio.gather(start_brain(), LOCAL.restart(), GEMINI.restart(), DEEPSEEK.restart(), KIMI.restart(),
                              return_exceptions=True)
     finally:
         SWITCH["choice"] = None
@@ -568,6 +576,16 @@ def switch_report(choice: str) -> str:
             return ("I've switched to Gemini, sir, but I need your Gemini API key. "
                     "Paste it in the box on screen.")
         return f"I tried to switch to Gemini, sir, but it isn't ready: {GEMINI.error}."
+    if choice.startswith("kimi"):
+        if KIMI.status == "ready":
+            got = kimi_pretty(KIMI.model_id)
+            if choice == "kimi-k2" and "k2.8" not in KIMI.model_id:
+                return f"Sir, Kimi K2.8 isn't open to your key yet, so I'm on {got} instead."
+            return f"Brain switch confirmed, sir. I'm on {got}."
+        if KIMI.status == "needs_key":
+            return ("I've switched to Kimi, sir, but I need your Kimi API key. "
+                    "Paste it in the box on screen.")
+        return f"I tried to switch to Kimi, sir, but it isn't ready: {KIMI.error}."
     if choice == "deepseek":
         if DEEPSEEK.status == "ready":
             return f"Brain switch confirmed, sir. I'm on {deepseek_pretty(DEEPSEEK.model_id)}."
@@ -722,6 +740,51 @@ async def ws_handler(request: web.Request):
     return ws
 
 
+# ------------------------------------------------- orders from the chief of staff ----
+# Claude (Opus, in Dr Wolf's Cowork app) can't press keys in this window, so it leaves small jobs
+# as text files in memory/chief/orders/. When Jarvis is idle he takes the oldest one, does it as if
+# Dr Wolf had typed it (ALLOW cards and the hard lines still apply), and writes his reply to
+# memory/chief/done/ for Claude to read. memory/ never goes to GitHub.
+CHIEF = MEMORY / "chief"
+
+
+async def chief_loop():
+    for d in ("orders", "doing", "done"):
+        (CHIEF / d).mkdir(parents=True, exist_ok=True)
+    while True:
+        await asyncio.sleep(10)
+        try:
+            orders = sorted((CHIEF / "orders").glob("*.md"))
+            busy = CONVO.task is not None and not CONVO.task.done()
+            his = [h for h in HUB.history if h.get("who") == "you" and not h.get("chief")]
+            asked = bool(his) and re.search(r"mail ?box|order|chief", his[-1].get("text", ""), re.I)
+            if not orders or busy or (his and not asked and time.time() - his[-1]["t"] < 90):
+                continue                            # nothing to do, or he's using Jarvis right now
+            job = orders[0]
+            text = job.read_text(encoding="utf-8").strip()
+            doing = CHIEF / "doing" / job.name
+            job.replace(doing)
+            if not text:
+                continue
+            log.info("chief's order: %s", job.name)
+            start = len(HUB.history)
+            await CONVO.ask("[A job from Claude, your chief of staff in Dr Wolf's Cowork app. Do it now as if "
+                            "Dr Wolf asked; his ALLOW cards and all your hard lines still apply. Finish with "
+                            "one line saying DONE or FAILED and why.]\n" + text, [])
+            if HUB.history[start:]:
+                HUB.history[start]["chief"] = True
+            while CONVO.task and not CONVO.task.done():
+                await asyncio.sleep(2)
+            reply = "\n\n".join(f"{h['who']}: {h['text']}" for h in HUB.history[start + 1:])
+            (CHIEF / "done" / job.name).write_text(
+                f"# {job.stem}\n\n## Order\n{text}\n\n## Jarvis\n{reply or '(no reply)'}\n", encoding="utf-8")
+            doing.unlink(missing_ok=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("chief_loop: %s", e)
+
+
 async def on_client(d: dict, ws: web.WebSocketResponse | None = None):
     t = d.get("type")
     if t == "ask":
@@ -824,6 +887,15 @@ async def start_gemini():
     except Exception as e:
         GEMINI.status, GEMINI.error = "error", str(e)[:300]
         log.exception("gemini brain failed to start")
+    await push_status()
+
+
+async def start_kimi():
+    try:
+        await KIMI.start()
+    except Exception as e:
+        KIMI.status, KIMI.error = "error", str(e)[:300]
+        log.exception("kimi brain failed to start")
     await push_status()
 
 
@@ -1009,6 +1081,21 @@ async def api_gemini_key(request):
         asyncio.create_task(announce(f"Key accepted, sir. I'm on {gemini_pretty(GEMINI.model_id)}."))
     return web.json_response({"ok": ok, "message": "Key saved and working." if ok else
                               f"Google didn't accept it: {GEMINI.error}."}, status=200 if ok else 400)
+
+
+async def api_kimi_key(request):
+    """The window's key box when a Kimi brain is chosen: save the key, check it with Kimi."""
+    d = await request.json()
+    key = (d.get("key") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.\-]{20,200}", key):
+        return web.json_response({"ok": False, "message": "That doesn't look like a Kimi API key."}, status=400)
+    await asyncio.to_thread(save_secret, KIMI_KEY_FILE, key)
+    await start_kimi()
+    ok = KIMI.status == "ready"
+    if ok and brain_choice().startswith("kimi"):
+        asyncio.create_task(announce(f"Key accepted, sir. I'm on {kimi_pretty(KIMI.model_id)}."))
+    return web.json_response({"ok": ok, "message": "Key saved and working." if ok else
+                              f"Kimi didn't accept it: {KIMI.error}."}, status=200 if ok else 400)
 
 
 async def api_deepseek_key(request):
@@ -1206,6 +1293,7 @@ def build_app() -> web.Application:
     app.router.add_post("/api/brain", api_brain)
     app.router.add_post("/api/gemini_key", api_gemini_key)
     app.router.add_post("/api/deepseek_key", api_deepseek_key)
+    app.router.add_post("/api/kimi_key", api_kimi_key)
     app.router.add_post("/api/feedback", api_feedback)
     app.router.add_post("/api/upload", api_upload)
     app.router.add_get("/api/behaviour", api_behaviour)
@@ -1327,6 +1415,8 @@ async def serve(note: dict | None):
           asyncio.create_task(growth_loop()), asyncio.create_task(bench_loop())]
     bg.append(asyncio.create_task(mood_loop()))
     bg.append(asyncio.create_task(start_deepseek()))
+    bg.append(asyncio.create_task(start_kimi()))
+    bg.append(asyncio.create_task(chief_loop()))
     fix = selftest.pending()                     # a fix he applied: check it now it's loaded
     learned = learner.pending()                  # an ability he added: test it now it's loaded
     if learned:

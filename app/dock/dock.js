@@ -18,8 +18,8 @@
     return realFetch(input, init);
   };
 
-  const FACES = ["living", "lotus", "board", "radial", "rain", "neural"];
-  const FACE_NAMES = { living: "Living Face", lotus: "Ink Lotus", board: "Circuit Board", radial: "Radial", rain: "Face in the Code", neural: "Neural Core" };
+  const FACES = ["living", "wolf", "lotus", "board", "radial", "rain", "neural"];
+  const FACE_NAMES = { living: "Living Face", wolf: "Wolf Face", lotus: "Ink Lotus", board: "Circuit Board", radial: "Radial", rain: "Face in the Code", neural: "Neural Core" };
   const ICON = {
     mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>',
     send: '<svg viewBox="0 0 24 24"><path d="M4 12h14M13 6l6 6-6 6"/></svg>',
@@ -181,7 +181,7 @@
           <button id="jv-voice" title="Spoken replies on/off">${ICON.voice}<span>VOICE</span></button>
           <button id="jv-log" title="The whole conversation">${ICON.log}LOG</button>
           <button id="jv-face" title="Switch Jarvis's face">${ICON.face}FACE</button>
-          <button id="jv-brainbtn" title="Choose Jarvis's brain: Claude Sonnet, Opus or Haiku, Local Qwen, Gemini, Gemini Flash-Lite, DeepSeek or Auto">${ICON.brain}BRAIN</button>
+          <button id="jv-brainbtn" title="Choose Jarvis's brain: Claude Sonnet, Opus or Haiku, Local Qwen, Gemini, Gemini Flash-Lite, DeepSeek, Kimi K3, Kimi K2.8 or Auto">${ICON.brain}BRAIN</button>
           <button id="jv-stop" title="Stop (Esc)">${ICON.stop}STOP</button>
         </div>
       </div>
@@ -204,9 +204,9 @@
         <input id="jv-gemkey-in" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the key here">
         <p class="jv-small" id="jv-gemkey-msg"></p>
         <div class="btns"><button class="jv-yes" id="jv-gemkey-save">SAVE KEY</button><button class="jv-no" id="jv-gemkey-close">LATER</button></div></div>
-      <div class="jv-card" id="jv-dskey"><h2>DEEPSEEK API KEY</h2>
-        <p>The DeepSeek brain needs a DeepSeek API key (pay-as-you-go, from DeepSeek).</p>
-        <p class="jv-small">On any browser: open <b>platform.deepseek.com/api_keys</b>, sign in, click <b>Create new API key</b>, copy it, and paste it here. The account needs a little credit topped up.</p>
+      <div class="jv-card" id="jv-dskey"><h2 id="jv-dskey-h">DEEPSEEK API KEY</h2>
+        <p id="jv-dskey-p">The DeepSeek brain needs a DeepSeek API key (pay-as-you-go, from DeepSeek).</p>
+        <p class="jv-small" id="jv-dskey-how">On any browser: open <b>platform.deepseek.com/api_keys</b>, sign in, click <b>Create new API key</b>, copy it, and paste it here. The account needs a little credit topped up.</p>
         <input id="jv-dskey-in" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the key here">
         <p class="jv-small" id="jv-dskey-msg"></p>
         <div class="btns"><button class="jv-yes" id="jv-dskey-save">SAVE KEY</button><button class="jv-no" id="jv-dskey-close">LATER</button></div></div>
@@ -864,12 +864,22 @@
     } catch (e) { msg.textContent = "Jarvis isn't running."; }
   }
 
+  let keyBrain = "deepseek";                       // which brain the shared key box is for
+  function keyCard(which) {
+    keyBrain = which;
+    if (which === "kimi") {
+      $("jv-dskey-h").textContent = "KIMI API KEY";
+      $("jv-dskey-p").textContent = "The Kimi brains (K3 and K2.8) need a Kimi API key (pay-as-you-go, from Moonshot AI).";
+      $("jv-dskey-how").innerHTML = "On any browser: open <b>platform.kimi.ai</b>, sign in, go to <b>API Keys</b>, click <b>Create</b>, copy it, and paste it here. The account needs a little credit topped up.";
+    }
+    return "jv-dskey";
+  }
   async function saveDeepSeekKey() {
     const key = $("jv-dskey-in").value.trim(), msg = $("jv-dskey-msg");
     if (!key) { msg.textContent = "Paste the key first."; return; }
-    msg.textContent = "Checking the key with DeepSeek…";
+    msg.textContent = `Checking the key with ${keyBrain === "kimi" ? "Kimi" : "DeepSeek"}…`;
     try {
-      const r = await realFetch("/api/deepseek_key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
+      const r = await realFetch(keyBrain === "kimi" ? "/api/kimi_key" : "/api/deepseek_key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
       const j = await r.json();
       msg.textContent = j.message || "";
       if (j.ok) { $("jv-dskey-in").value = ""; setTimeout(() => $("jv-dskey").classList.remove("show"), 1200); }
@@ -950,7 +960,7 @@
     $("jv-voice").classList.toggle("off", !voiceOn);
     $("jv-voice").innerHTML = (voiceOn ? ICON.voice : ICON.mute) + `<span>${voiceOn ? "VOICE ON" : "MUTED"}</span>`;
     $("jv-signin").classList.toggle("show", b === "signin");
-    if (b === "needs_key" && !gemKeyLater) $(status.brain_choice === "deepseek" ? "jv-dskey" : "jv-gemkey").classList.add("show");
+    if (b === "needs_key" && !gemKeyLater) $(status.brain_choice === "deepseek" ? keyCard("deepseek") : String(status.brain_choice || "").startsWith("kimi") ? keyCard("kimi") : "jv-gemkey").classList.add("show");
     if (b !== "needs_key") gemKeyLater = false;
     if (b === "error" && status.brain_error) $("jv-c-brain").title = status.brain_error;
   }

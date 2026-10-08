@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wolf Face</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden}
+  canvas#stage{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+  #act{position:fixed;left:50%;transform:translateX(-50%);bottom:150px;font:700 13px 'Segoe UI',system-ui,sans-serif;
+       letter-spacing:.22em;color:#e8f6ff;opacity:.75;text-shadow:0 0 8px rgba(0,232,255,.8);white-space:nowrap;z-index:4}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="act"></div>
+<script src="../../core.js"></script>
+<script>
+/* Wolf Face: Dr Wolf's portrait (one 15 KB picture) brought to life as a cut-out puppet.
+   No video, no AI at run time: every frame is a few slices of the same picture, so it is
+   light on the phone and the PC.
+   - Mouth: the jaw drops with the loudness of his own voice (not exact lip-sync).
+   - Smile / frown: the mouth band is bent with thin strips (corners up or down).
+   - Eyes: natural blinks, squint when worried or thinking, wide when startled,
+     red glow that pulses with energy and looks up while thinking.
+   - Brows lift while he waits for your ALLOW.
+   - Mood tint, breathing, head tilt while listening, glitch on a failed step,
+     a shine on success and a gold shine on level-up.
+   Feature positions are fractions of the picture: tune FEAT if a part sits wrong. */
+"use strict";
+AV.init({ sound: false });
+
+const FEAT = {
+  eyeL: [0.368, 0.351], eyeR: [0.576, 0.354], eyeW: 0.052, eyeH: 0.028,   // eye centres and half-size
+  brow: [0.285, 0.262, 0.690, 0.318],                                     // x0, y0, x1, y1
+  lip:  [0.385, 0.585, 0.585, 0.625],                                     // upper-lip band
+  jaw:  [0.360, 0.625, 0.600, 0.760],                                     // everything that drops with the jaw
+  drop: 0.032,                                                            // biggest jaw drop (fraction of size)
+  bend: 0.020,                                                            // biggest smile bend
+};
+const TINT = {                                   // colour of the white parts, by mood
+  calm: [232, 246, 255], think: [184, 240, 255], happy: [255, 233, 176], proud: [255, 214, 120],
+  bad: [255, 176, 176], tired: [200, 205, 215], listen: [214, 250, 255],
+};
+
+const cv = document.getElementById("stage"), ctx = cv.getContext("2d");
+const act = document.getElementById("act");
+const img = new Image(); img.src = "wolf.webp";
+let W = 0, H = 0, S = 0, X0 = 0, Y0 = 0, dpr = 1;
+function fit() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.width = Math.round(innerWidth * dpr); H = cv.height = Math.round(innerHeight * dpr);
+  const portrait = innerHeight > innerWidth * 1.15;
+  S = Math.min(W, H) * (portrait ? 0.92 : 0.80);
+  X0 = (W - S) / 2; Y0 = (H - S) / 2 + (portrait ? H * 0.06 : H * 0.02);
+}
+addEventListener("resize", fit); fit();
+
+// ------------------------------------------------------------------ state ----
+const st = { jaw: 0, smile: 0, brow: 0, lid: 0, wide: 0, glow: 0.6, gx: 0, gy: 0, tilt: 0,
+             tint: TINT.calm.slice(), glitch: 0, shine: 0, shineGold: 0 };
+let blinkT = 0, nextBlink = 2 + Math.random() * 3, lastEv = 0, lastLevel = null;
+const lerp = (a, b, k) => a + (b - a) * k;
+
+function targets(t) {
+  const B = window.JV_BEHAVE || {}, v = B.vitals || window.JV_VITALS || {};
+  const p = +B.pleasure || 0, a = +B.arousal || 0, mood = String(B.mood || ""), phase = String(B.phase || "");
+  const energy = v.energy != null ? v.energy / 100 : 0.7;
+  const T = { smile: 0, brow: 0, lid: 0, wide: 0, glow: 0.45 + 0.4 * energy, gx: 0, gy: 0, tilt: 0, tint: TINT.calm };
+  if (p > 0.25) { T.smile = Math.min(1, p * 1.4); T.tint = TINT.happy; }
+  if (p < -0.2) { T.smile = Math.max(-1, p * 1.3); T.lid = 0.3; T.tint = TINT.bad; }
+  if (/worried|startled/.test(mood) || a > 0.6) { T.wide = 0.8; T.brow = 0.5; }
+  if (B.allow) { T.brow = 1; T.wide = 0.5; }
+  if (energy < 0.25) { T.lid = Math.max(T.lid, 0.35); T.tint = TINT.tired; T.glow = 0.3; }
+  if (AV.state === "thinking") { T.gx = -0.006; T.gy = -0.006; T.lid = Math.max(T.lid, 0.15);
+                                 T.glow = 0.75 + 0.25 * Math.sin(t * 3); if (p >= -0.2 && p <= 0.25) T.tint = TINT.think; }
+  if (AV.state === "listening") { T.tilt = 0.035; T.wide = Math.max(T.wide, 0.3); if (p >= -0.2 && p <= 0.25) T.tint = TINT.listen; }
+  if (AV.state === "speaking") T.glow = Math.max(T.glow, 0.7);
+  // one-off events: glitch on failure, shine on success, gold shine on level-up
+  if (B.t && B.t !== lastEv) {
+    lastEv = B.t;
+    if (phase === "error" || B.ok === false) st.glitch = 0.7;
+    else if (/done|praised|lessons_done/.test(phase)) st.shine = 1;
+  }
+  if (v.level != null) { if (lastLevel != null && v.level > lastLevel) { st.shine = 1; st.shineGold = 1; } lastLevel = v.level; }
+  act.textContent = B.label && AV.state !== "idle" ? String(B.label).toUpperCase().slice(0, 40) : "";
+  return T;
+}
+
+// ------------------------------------------------------------- drawing ----
+const R = (fx, fy, fw, fh) => [fx * 720, fy * 720, fw * 720, fh * 720];   // picture rect (source pixels)
+function sliceTo(sx, sy, sw, sh, dy) {                 // draw a source rect onto the face, shifted down by dy (screen px)
+  const k = S / 720;
+  ctx.drawImage(img, sx, sy, sw, sh, X0 + sx * k, Y0 + sy * k + dy, sw * k, sh * k);
+}
+function blackRect(sx, sy, sw, sh, extra) {
+  const k = S / 720;
+  ctx.fillStyle = "#000"; ctx.fillRect(X0 + sx * k, Y0 + sy * k, sw * k, sh * k + extra);
+}
+function bent(rect, dy, bend) {                        // strips: corners move by bend (+ up = smile)
+  const [x0, y0, x1, y1] = rect, [sx, sy, sw, sh] = R(x0, y0, x1 - x0, y1 - y0);
+  const n = 24, w = sw / n;
+  for (let i = 0; i < n; i++) {
+    const u = (i + 0.5) / n * 2 - 1;                    // -1 .. 1 across the mouth
+    const off = -bend * S * u * u;                       // corners go up for a smile
+    sliceTo(sx + i * w, sy, w + 0.6, sh, dy + off);
+  }
+}
+
+function draw(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  if (!img.complete || !img.naturalWidth) return;
+  const cx = X0 + S / 2, cy = Y0 + S / 2;
+  const breathe = 1 + 0.006 * Math.sin(t * 1.4);
+  const sway = st.tilt + 0.008 * Math.sin(t * 0.45);
+  ctx.translate(cx, cy); ctx.rotate(sway); ctx.scale(breathe, breathe); ctx.translate(-cx, -cy);
+
+  // 1. the whole face
+  ctx.drawImage(img, X0, Y0, S, S);
+
+  // 2. brows (lift while waiting for ALLOW / startled)
+  if (st.brow > 0.02) {
+    const [sx, sy, sw, sh] = R(FEAT.brow[0], FEAT.brow[1], FEAT.brow[2] - FEAT.brow[0], FEAT.brow[3] - FEAT.brow[1]);
+    sliceTo(sx, sy, sw, sh, -st.brow * S * 0.016);
+  }
+
+  // 3. mouth: jaw drop with the voice, lips bent for smile / frown
+  const drop = st.jaw * FEAT.drop * S, bend = st.smile * FEAT.bend;
+  if (drop > 0.5 || Math.abs(bend) > 0.001) {
+    const [lx, ly, lw, lh] = R(FEAT.lip[0], FEAT.lip[1], FEAT.lip[2] - FEAT.lip[0], FEAT.lip[3] - FEAT.lip[1]);
+    const [jx, jy, jw, jh] = R(FEAT.jaw[0], FEAT.jaw[1], FEAT.jaw[2] - FEAT.jaw[0], FEAT.jaw[3] - FEAT.jaw[1]);
+    blackRect(Math.min(lx, jx), ly, Math.max(lx + lw, jx + jw) - Math.min(lx, jx), jy + jh - ly, drop + 2);
+    bent(FEAT.jaw, drop, bend * 0.6);
+    bent(FEAT.lip, 0, bend);
+  }
+
+  // 4. eyelids: blink, squint, wide
+  const k = S / 720, lid = Math.min(1, Math.max(st.lid - st.wide * 0.3, 0) + blinkT);
+  if (lid > 0.02) {
+    ctx.fillStyle = "#000";
+    for (const e of [FEAT.eyeL, FEAT.eyeR]) {
+      const ex = X0 + e[0] * S, ey = Y0 + e[1] * S, ew = FEAT.eyeW * S, eh = FEAT.eyeH * S * 1.25;
+      ctx.fillRect(ex - ew * 1.1, ey - eh, ew * 2.2, eh * 2 * lid);      // lid comes down from the top
+    }
+  }
+
+  // 5. mood tint on the white parts (black stays black)
+  ctx.globalCompositeOperation = "multiply";
+  ctx.fillStyle = `rgb(${st.tint.map(Math.round).join(",")})`;
+  ctx.fillRect(X0 - 20, Y0 - 20, S + 40, S + 40);
+  ctx.globalCompositeOperation = "source-over";
+
+  // 6. red eye glow (pulses with energy, follows gaze), hidden while the eyes are shut
+  const open = 1 - Math.min(1, lid);
+  if (open > 0.1) {
+    ctx.globalCompositeOperation = "lighter";
+    for (const e of [FEAT.eyeL, FEAT.eyeR]) {
+      const ex = X0 + (e[0] + st.gx) * S, ey = Y0 + (e[1] + st.gy) * S, r = S * (0.03 + 0.03 * st.glow + 0.01 * st.wide);
+      const g = ctx.createRadialGradient(ex, ey, 0, ex, ey, r);
+      g.addColorStop(0, `rgba(255,60,40,${0.75 * st.glow * open})`);
+      g.addColorStop(0.35, `rgba(255,20,20,${0.35 * st.glow * open})`);
+      g.addColorStop(1, "rgba(255,0,0,0)");
+      ctx.fillStyle = g; ctx.fillRect(ex - r, ey - r, r * 2, r * 2);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // 7. success shine (a light sweep), gold on level-up
+  if (st.shine > 0.01) {
+    const x = X0 - S * 0.3 + (1 - st.shine) * S * 1.6;
+    const g = ctx.createLinearGradient(x - S * 0.15, Y0, x + S * 0.15, Y0 + S * 0.2);
+    const c = st.shineGold ? "255,210,90" : "200,250,255";
+    g.addColorStop(0, `rgba(${c},0)`); g.addColorStop(0.5, `rgba(${c},0.35)`); g.addColorStop(1, `rgba(${c},0)`);
+    ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = g; ctx.fillRect(X0, Y0, S, S);
+    ctx.globalCompositeOperation = "source-over";
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // 8. glitch on a failed step: torn horizontal slices + a red ghost
+  if (st.glitch > 0.02) {
+    const n = 6;
+    for (let i = 0; i < n; i++) {
+      const y = Y0 + Math.random() * S, h = S * (0.01 + Math.random() * 0.04), dx = (Math.random() - 0.5) * S * 0.08 * st.glitch;
+      ctx.drawImage(cv, 0, y, W, h, dx, y, W, h);
+    }
+    ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = 0.35 * st.glitch;
+    ctx.drawImage(cv, S * 0.012 * st.glitch, 0);
+    ctx.fillStyle = "rgba(255,0,40,0.15)"; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+  }
+}
+
+// ---------------------------------------------------------------- loop ----
+let last = performance.now(), t = 0;
+function frame(now) {
+  const dt = Math.min(100, now - last); last = now; t += dt / 1000;
+  AV.tick(dt);
+  const T = targets(t), f = Math.min(1, dt / 1000 * 6);
+  // jaw follows the smoothed voice envelope, with a little chatter so it never looks frozen
+  const voice = AV.state === "speaking" ? Math.min(1, (AV.env || AV.level || 0) * 1.3) : 0;
+  st.jaw = lerp(st.jaw, voice * (0.75 + 0.25 * Math.sin(t * 17)), Math.min(1, dt / 1000 * 18));
+  for (const key of ["smile", "brow", "lid", "wide", "glow", "gx", "gy", "tilt"]) st[key] = lerp(st[key], T[key], f);
+  for (let i = 0; i < 3; i++) st.tint[i] = lerp(st.tint[i], T.tint[i], f * 0.6);
+  // blinks: every 2-6 s, a quick close and open (sometimes a double blink)
+  nextBlink -= dt / 1000;
+  if (nextBlink <= 0) { blinkT = 1; nextBlink = (Math.random() < 0.15 ? 0.25 : 2 + Math.random() * 4); }
+  blinkT = Math.max(0, blinkT - dt / 1000 * 7);
+  st.glitch = Math.max(0, st.glitch - dt / 1000 * 1.2);
+  st.shine = Math.max(0, st.shine - dt / 1000 * 0.9); if (st.shine === 0) st.shineGold = 0;
+  draw(t);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

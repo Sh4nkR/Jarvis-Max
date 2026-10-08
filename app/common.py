@@ -24,10 +24,12 @@ DEFAULTS = {
     "model": "sonnet",
     "brain_mode": "auto",          # auto: Claude first, local brain when Claude is out | claude | local
     "local_model": "qwen3.5:9b",
-    "local_ctx": 12288,            # the local brain's working memory, in tokens
+    "local_ctx": 16384,            # the local brain's working memory, in tokens
     "search_region": "in-en",
     "gemini_model": "auto",
     "deepseek_model": "auto",      # auto = deepseek-v4-flash; or "deepseek-v4-pro"
+    "kimi_model": "kimi-k3",       # kimi-k3 or kimi-k2.8 (Moonshot AI, his own Kimi API key)
+    "kimi_effort": "low",          # how hard Kimi K3 thinks: low (quick voice replies), high or max
     "github_user": "",             # his GitHub username, for github_publish        # auto = the newest Gemini Flash the key can use; or e.g. "gemini-3.8-flash"
     "hands_on_at_start": True,
     "open_window": True,
@@ -64,6 +66,10 @@ BRAINS = {
                "about": "Google's Gemini, with your own Gemini API key."},
     "gemini-lite": {"label": "Gemini Flash-Lite", "brain_mode": "gemini", "gemini_model": "gemini-3.5-flash-lite",
                     "about": "Gemini 3.5 Flash-Lite: the quickest Gemini, same API key. Weaker at long jobs."},
+    "kimi-k3": {"label": "Kimi K3", "brain_mode": "kimi", "kimi_model": "kimi-k3",
+                "about": "Moonshot AI's flagship (1M context, always thinks), with your own Kimi API key."},
+    "kimi-k2": {"label": "Kimi K2.8", "brain_mode": "kimi", "kimi_model": "kimi-k2.8",
+                "about": "Kimi K2.8: quicker and cheaper than K3, same Kimi API key."},
     "deepseek": {"label": "DeepSeek", "brain_mode": "deepseek", "deepseek_model": "auto",
                  "about": "DeepSeek V4 online (deepseek-v4-flash), with your own DeepSeek API key. Reads text, not pictures."},
     "auto": {"label": "Auto", "brain_mode": "auto",
@@ -94,6 +100,8 @@ def brain_choice(cfg: dict | None = None) -> str:
         return "gemini-lite" if "lite" in (cfg.get("gemini_model") or "").lower() else "gemini"
     if mode in ("local", "auto", "deepseek"):
         return mode
+    if mode == "kimi":
+        return "kimi-k2" if "k2" in (cfg.get("kimi_model") or "").lower() else "kimi-k3"
     model = (cfg.get("model") or "").lower()
     return "opus" if "opus" in model else "haiku" if "haiku" in model else "sonnet"
 
@@ -116,7 +124,7 @@ def save_brain(choice: str) -> dict:
     except (OSError, ValueError):
         cfg = {}
     cfg["brain_mode"] = pick["brain_mode"]
-    for key in ("model", "gemini_model", "deepseek_model"):
+    for key in ("model", "gemini_model", "deepseek_model", "kimi_model"):
         if key in pick:
             cfg[key] = pick[key]
     path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")

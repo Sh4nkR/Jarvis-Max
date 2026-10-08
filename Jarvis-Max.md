@@ -1,6 +1,6 @@
 # Jarvis-Max, with Jarvis-Hands™ for PC and Android
 
-**One AI assistant across your Windows PC and your Android phone: voice, eyes, hands on both devices, a memory, and a nightly self-improvement loop.**
+**One computer-using agent (CUA) across your Windows PC and your Android phone: voice, eyes, hands on both devices, a memory, and a nightly self-improvement loop.**
 
 You talk, and Jarvis answers in the voice you pick (British, or the acted yakuza and rikuo characters). On the **PC** he sees your screen and webcam and works your mouse and keyboard. On the **phone**, the Jarvis-Hands™ Android app gives him hands: he reads the screen, opens apps, taps, types, scrolls and places calls. Chrome on the phone carries his face, ears and voice. He hears Indian English and Hinglish (Sarvam Saaras V4, with local Whisper as backup), builds Android apps (on the PC or on GitHub), learns from files you hand him, remembers you, improves overnight, checks and repairs his own hands, and **learns new abilities when you ask him to**. Brains are switchable: Claude, Gemini, DeepSeek, or a local Qwen model on your own PC.
 
@@ -55,7 +55,7 @@ Everything runs on your own PC (`127.0.0.1`, plus your home Wi-Fi for the phone)
 
 ![How Jarvis-Max works](Jarvis-Max-workflow.png)
 
-To rebuild Jarvis from scratch, step by step, read [BUILD-JARVIS.md](BUILD-JARVIS.md) (box numbers match the picture).
+The whole project on 8 pages: [docs/Jarvis-Max-Overview.pdf](docs/Jarvis-Max-Overview.pdf). Every job step by step: [Jarvis-skills-workflows.png](Jarvis-skills-workflows.png). To rebuild Jarvis from scratch, read [BUILD-JARVIS.md](BUILD-JARVIS.md).
 
 | New | What it does | Status |
 |---|---|---|
@@ -77,7 +77,7 @@ To rebuild Jarvis from scratch, step by step, read [BUILD-JARVIS.md](BUILD-JARVI
 | **Vitals and counter card** | Level, XP, morale, energy, plus streak, best, jobs today, steps and slips. On the phone they show as one card between the dock panel and the face. XP is only earned by steps that really succeeded. | Tested |
 | **Eureka bulb and third eye** | The bulb lights only when he recovers from a failure. A third eye opens during long, serious work (build, code, research), with a gold ring when Opus is the brain. | Tested |
 | **Sarvam ears** | Main speech-to-text is Sarvam Saaras V4 (online, trained on Indian speech, Hinglish-aware), with Jarvis's names as key terms. Key: `secrets/sarvam_key.txt`. With no key, no internet, no credits or any error, local Whisper answers instead, the same second. `"ears_engine": "whisper"` in jarvis.json keeps it local. | Working (key saved Oct 4) |
-| **Ability Learner** | Say "learn how to ...": Claude Opus researches it, writes a step-by-step plan and builds ONE new file in `app/abilities/` on a copy of the code. Jarvis checks it (compiles, loads, has its own test, no forbidden moves), then the plan + code go on screen: ALLOW adds it. After your restart he tests it and tells you what to say. "fix the X ability: ..." sends a bug back; "forget the X ability" moves it to `_disabled`; "what abilities have you learned?" lists them. Changing abilities ask ALLOW on first use. Record: `logs/abilities/history.md`. | Built Oct 6, waiting for restart |
+| **Ability Learner** | Say "learn how to ...": Claude Opus researches it, writes a step-by-step plan and builds ONE new file in `app/abilities/` on a copy of the code. Jarvis checks it (compiles, loads, has its own test, no forbidden moves), then the plan + code go on screen: ALLOW adds it. After your restart he tests it and tells you what to say. "fix the X ability: ..." sends a bug back; "forget the X ability" moves it to `_disabled`; "what abilities have you learned?" lists them. Changing abilities ask ALLOW on first use. Record: `logs/abilities/history.md`. | Built Oct 6 |
 | **Ears on the GPU** | With an NVIDIA card, the start file also fetches the CUDA parts, and the ears (Whisper large-v3-turbo) run on the GPU in float16 whenever the brain is Gemini or Claude; Qwen is moved out of the GPU until it's needed. With the local Qwen brain, Qwen keeps the GPU and the ears use the CPU. `"ears_device"` in jarvis.json: auto, cuda or cpu. | Built, testing on an RTX 5050 |
 | **Wisdom** | `app/wisdom.py`: lessons that survive 7 days and 5 nightly reviews become sutras in `memory/notes/Wisdom.md`, and one daily sutra goes to `Sutras.md`. Prime directive: turn knowledge into wisdom. "Forgive, but never forget." | Tested |
 
@@ -281,6 +281,9 @@ Jarvis-Max/
 ├─ NEWBIES-START-HERE.md        hand-written beginner's notebook
 ├─ Jarvis-Max.md                this file
 ├─ BUILD-JARVIS.md              rebuild Jarvis step by step
+├─ Jarvis-Max-workflow.png      architecture map
+├─ Jarvis-skills-workflows.png  every job, step by step (also .pdf)
+├─ docs/                        the 8-page overview PDF and the beginner's notebook
 ├─ TANTRA-NN-*.md               build guides (phone mic, phone hands, calls, face, behaviour)
 ├─ memory-template/CLAUDE.md    boot file copied to memory/ on first start
 ├─ LICENSE, LICENSES/           AGPL-3.0 and third-party licenses
@@ -355,7 +358,7 @@ A new engine (another API) is a class with `start()`, `restart()`, `stop()`, `in
 - **ALLOW cards:** PowerShell commands, file writes outside the memory folder, builds, publishing, phone calls, repairs and new abilities all wait for your click on **ALLOW**. One ALLOW covers the same kind of step for 20 minutes; calls and publishing ask every time.
 - **Code changes stay in your hands:** self-repairs and new abilities are written on a copy, shown to you as code, applied only on ALLOW, and tested after *your* restart. If a test fails, the old code comes back. Jarvis never restarts himself.
 - **Prompt-injection hygiene:** web pages, screen text, documents and other AIs' replies are fed to the brains as data, and the brains are told never to follow instructions found there.
-- **Hard rules:** never type or store passwords, PINs, OTPs or card numbers; never pay, buy or create accounts; on a phone call, say he is an AI assistant and never pretend to be you; stay out of banking and payment apps.
+- **Hard rules:** never type or store passwords, PINs, OTPs or card numbers; never pay, buy or create accounts; on a phone call, he says he is an AI agent and never pretends to be you; stay out of banking and payment apps.
 - **Nothing personal in git:** `memory/`, `logs/`, `secrets/` and `models/` are git-ignored, and `github_publish` scans for keys before every push.
 - **Hands kill switch:** move the mouse into any screen corner.
 
