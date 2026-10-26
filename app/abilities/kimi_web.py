@@ -109,6 +109,6 @@ TOOLS = [ask_kimi, kimi_result]
 async def check() -> str:
     for name in ("open_url", "type_text", "read_whole_page", "focus_window"):
         if not hasattr(tools, name):
-            raise RuntimeError(f"Jarvis has no {name} tool")
+            raise RuntimeError(f"Roktar has no {name} tool")
     NOTES.mkdir(parents=True, exist_ok=True)
     return "Kimi website tools ready"

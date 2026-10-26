@@ -12,6 +12,7 @@ logs/
 
 # Personal notes - not for GitHub
 memory/
+memory-before-roktar/
 
 # OS junk
 Thumbs.db
@@ -21,10 +22,10 @@ Thumbs.db
 secrets/
 
 # Old update packages (not source)
-Jarvis-update-accent/
-Jarvis-update-accent.zip
+Roktar-update-accent/
+Roktar-update-accent.zip
 
-# Kept out of GitHub by Jarvis (keys, personal notes, logs, installs)
+# Kept out of GitHub by Roktar (keys, personal notes, logs, installs)
 .env
 *.env
 *.pem
@@ -36,7 +37,7 @@ id_rsa*
 venv/
 node_modules/
 __pycache__/
-.jarvis-logs/
+.roktar-logs/
 
-# Personal settings (Jarvis creates this on first start)
-app/jarvis.json
+# Personal settings (Roktar creates this on first start)
+app/roktar.json

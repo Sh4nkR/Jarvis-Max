@@ -1,12 +1,12 @@
 """Crew Mode, phase 1: the chief of staff plans and reviews; the free and cheap brains do the work, in parallel.
 Built by Claude, 8 Oct 2026. Shoestring budget: the chief (Claude) is called twice per job (plan, final review);
-everything else runs on the free Gemini key, the free local Qwen, and Jarvis's own free web search.
+everything else runs on the free Gemini key, the free local Qwen, and Roktar's own free web search.
 Plan:
 1. The chief splits the goal into small tasks on a task board, each given to the cheapest brain that can do it.
 2. Workers run in parallel (Gemini queued at its free-key limit, Qwen one at a time on the GPU).
    A task can use the results of tasks it depends on. A failed task is retried once on another brain.
 3. The chief merges everything into one answer; the board and the result are saved in notes/crew/.
-Phase 1 workers think, read and write; mouse, keyboard and phone steps come back as a to-do list for Jarvis.
+Phase 1 workers think, read and write; mouse, keyboard and phone steps come back as a to-do list for Roktar.
 """
 import asyncio
 import json
@@ -19,7 +19,7 @@ import httpx
 from common import MEMORY, load_config, read_secret
 from tools import tool, _say, errors_as_words
 
-log = logging.getLogger("jarvis.crew")
+log = logging.getLogger("roktar.crew")
 SAFE = False
 
 GEMINI_API = "https://generativelanguage.googleapis.com/v1beta"
@@ -38,13 +38,13 @@ _GEM = asyncio.Semaphore(3)            # free key: a few calls at once (it also 
 _QWEN = asyncio.Semaphore(1)           # one GPU
 _models: dict[str, str] = {}
 
-PLAN_RULES = """You are the chief of staff of a crew of AI workers for Jarvis-Max, Dr Wolf's computer-using agent.
+PLAN_RULES = """You are the chief of staff of a crew of AI workers for Roktar-Max, Dr Wolf's computer-using agent.
 Split the goal into small, concrete tasks (2 to 8) and give each to the CHEAPEST worker that can do it well.
 Workers:
 {workers}
 Rules: tasks that don't depend on each other run at the same time, so split work into parallel pieces when you can
 (e.g. one web task per sub-question). Use "needs" to pass earlier results into a task. Workers can't use the mouse,
-keyboard or phone: list any such steps in "hands" for Jarvis to do afterwards. Use haiku only if really needed.
+keyboard or phone: list any such steps in "hands" for Roktar to do afterwards. Use haiku only if really needed.
 Reply with JSON only:
 {{"tasks": [{{"id": "t1", "worker": "web", "task": "...", "needs": []}}], "done_when": "one line", "hands": ["..."]}}"""
 

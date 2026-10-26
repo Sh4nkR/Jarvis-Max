@@ -1,50 +1,50 @@
-JARVIS ASSISTANT
+ROKTAR ASSISTANT
 ================
 
 TO START
-  Click  Start-Jarvis-Max.bat  once. Jarvis's window opens by itself.
+  Click  Start-Roktar-Max.bat  once. Roktar's window opens by itself.
 
-  A black window also opens. That's Jarvis's engine. Leave it open; closing it
-  switches Jarvis off. If you close only Jarvis's window, clicking the .bat again
+  A black window also opens. That's Roktar's engine. Leave it open; closing it
+  switches Roktar off. If you close only Roktar's window, clicking the .bat again
   just reopens it.
 
 THE FIRST START IS DIFFERENT (one time only)
-  1. It downloads Jarvis's parts, about 1 GB in total. That takes a few minutes.
+  1. It downloads Roktar's parts, about 1 GB in total. That takes a few minutes.
   2. A Claude page opens in your browser. Sign in and click Authorize.
-     This connects Jarvis's brain (Claude Code) to your Claude plan. There is
-     no API key and no extra cost. Jarvis never sees your password.
+     This connects Roktar's brain (Claude Code) to your Claude plan. There is
+     no API key and no extra cost. Roktar never sees your password.
   3. The first time you press TALK or CAMERA, the window asks to use the
      microphone or camera. Click Allow.
   4. The chip at the top says EARS LOADING for the first minute or two while
-     the speech model downloads. You can type to Jarvis in the meantime.
+     the speech model downloads. You can type to Roktar in the meantime.
 
 THE BUTTONS
-  TALK      Click, speak, click again (it says SEND IT) and Jarvis answers aloud.
+  TALK      Click, speak, click again (it says SEND IT) and Roktar answers aloud.
             Keyboard: F2 does the same.
   Type box  Type and press Enter, or click SEND.
-  CAMERA    Turns the webcam on or off. While it's on, Jarvis sees what the
-            camera sees with every question. Jarvis can also take a picture
+  CAMERA    Turns the webcam on or off. While it's on, Roktar sees what the
+            camera sees with every question. Roktar can also take a picture
             by itself when you ask, "what am I holding?"
-  SCREEN    Jarvis looks at your screen. Type a question first, or just click.
+  SCREEN    Roktar looks at your screen. Type a question first, or just click.
   SEARCH    Searches the web for what's in the box.
-  MEMORY    What Jarvis has saved about you. Click a note to read it.
-  HANDS     ON = Jarvis may use your mouse and keyboard. OFF = look, don't touch.
+  MEMORY    What Roktar has saved about you. Click a note to read it.
+  HANDS     ON = Roktar may use your mouse and keyboard. OFF = look, don't touch.
   VOICE     Spoken replies on or off.
   LOG       The whole conversation. There's a button at the bottom to start fresh.
-  BRAIN     Pick Jarvis's brain: Claude Sonnet, Opus or Haiku (quickest), Gemini,
+  BRAIN     Pick Roktar's brain: Claude Sonnet, Opus or Haiku (quickest), Gemini,
             Gemini Flash-Lite (quickest Gemini, same key), DeepSeek (needs a
             DeepSeek key), Local Qwen (on this PC) or Auto (Claude first, local
             when your Claude limit runs out).
-            Jarvis restarts by itself (about 15 seconds) and then says which
+            Roktar restarts by itself (about 15 seconds) and then says which
             brain really came up. You can also just say "switch to Opus".
             Gemini asks once for a Gemini API key (free at aistudio.google.com/apikey);
             it's kept in the secrets folder and never goes to GitHub.
-  FACE      Switches Jarvis's face: Living Face (the default), Ink Lotus,
+  FACE      Switches Roktar's face: Living Face (the default), Ink Lotus,
             Circuit Board, Radial, Face in the Code and Neural Core.
   THUMBS    Thumbs up = that answer was right. Thumbs down = wrong (type what was
             wrong in the box first if you like). Saying "no, I meant..." or
             "wrong" counts as thumbs down; "perfect" or "well done" as thumbs up.
-  STOP      Stops Jarvis at once, mid-sentence or mid-task. Keyboard: Esc.
+  STOP      Stops Roktar at once, mid-sentence or mid-task. Keyboard: Esc.
 
   The four chips at the top say whether BRAIN, EARS, VOICE and HANDS are ready.
 
@@ -52,27 +52,27 @@ TEACH HIM SOMETHING NEW
 
   Say "learn how to ..." and Claude Opus works out how, writes a short plan and
   builds the new ability. The plan and the code show up on screen: ALLOW adds it.
-  Restart Jarvis; he tests it and tells you what to say to use it.
+  Restart Roktar; he tests it and tells you what to say to use it.
   Something wrong with it? Say "fix the <name> ability" and what happened.
   "What abilities have you learned?" lists them; "forget the <name> ability"
   switches one off.
 
 EMERGENCY STOP FOR THE HANDS
   Push the mouse into any corner of the screen. That halts any mouse or keyboard
-  action Jarvis is doing.
+  action Roktar is doing.
 
 LOCAL BRAIN (Qwen, on this PC)
-  Jarvis has a second brain that runs on your own laptop through Ollama. It can
+  Roktar has a second brain that runs on your own laptop through Ollama. It can
   still go online: research, web search, reading pages and your multi search, plus
   the screen, camera, mouse, keyboard, files and PowerShell (commands ask ALLOW).
   The BRAIN chip says LOCAL when it's answering.
-  The BRAIN button picks the brain (it writes "brain_mode" in app\jarvis.json):
+  The BRAIN button picks the brain (it writes "brain_mode" in app\roktar.json):
     "local"  always the local brain
     "auto"   Claude first; the local brain when your Claude limit runs out
              (for 30 minutes) or Claude can't be reached
     "claude" Claude only
 
-JARVIS LEARNS EVERY NIGHT
+ROKTAR LEARNS EVERY NIGHT
   Every request is logged (logs\turns.jsonl) with your thumbs. Once a day, at
   night when you're not using him, the local Qwen brain (free) reviews the day:
     - lessons from what went wrong        -> memory\notes\Lessons.md
@@ -85,31 +85,31 @@ JARVIS LEARNS EVERY NIGHT
   LOG panel > LEARN NOW does it straight away. Needs Ollama running.
 
 GITHUB: BUILD AND PUBLISH
-  Say "download and install github.com/<owner>/<project>". Jarvis shows you the
-  project's stars and last update, downloads it to Desktop\Jarvis-Builds, and a
-  stronger AI (Claude, or Gemini) writes a checklist (PLAN.md). Jarvis works through
+  Say "download and install github.com/<owner>/<project>". Roktar shows you the
+  project's stars and last update, downloads it to Desktop\Roktar-Builds, and a
+  stronger AI (Claude, or Gemini) writes a checklist (PLAN.md). Roktar works through
   it one step at a time (ALLOW each), asks the stronger AI when a step fails, and
   stops after 3 tries on one step.
-  Say "push <folder> to GitHub as <name>". Jarvis checks for keys and private files,
+  Say "push <folder> to GitHub as <name>". Roktar checks for keys and private files,
   writes a README if needed, shows you a preview (ALLOW), then pushes. For a new
   repo he opens GitHub's page; you click Create repository.
 
-WHEN JARVIS ASKS PERMISSION
-  Before Jarvis runs a command that changes something on your PC, or edits a file
+WHEN ROKTAR ASKS PERMISSION
+  Before Roktar runs a command that changes something on your PC, or edits a file
   outside its memory, a box appears with ALLOW and DENY. Nothing happens until
   you click one. (Look-only commands, clicks, typing and opening apps don't ask;
   the HANDS button controls the mouse and keyboard.)
 
 WHERE THINGS ARE
-  memory\          Jarvis's memory (the vault). CLAUDE.md is its identity and
+  memory\          Roktar's memory (the vault). CLAUDE.md is its identity and
                    rules. Open any note in Notepad and edit it yourself.
-  app\jarvis.json  Settings: name, voice, what it calls you.
-  logs\jarvis.log  What happened, if something goes wrong.
+  app\roktar.json  Settings: name, voice, what it calls you.
+  logs\roktar.log  What happened, if something goes wrong.
 
 IF SOMETHING'S WRONG
   - BRAIN says SIGN IN: click the SIGN IN button in the window.
   - EARS says ERROR: the speech model couldn't download. Check the internet
-    and start Jarvis again. Typing still works.
+    and start Roktar again. Typing still works.
   - VOICE says BACKUP: Microsoft's voice service couldn't be reached, so the
     window's built-in voice is speaking. It switches back by itself.
 

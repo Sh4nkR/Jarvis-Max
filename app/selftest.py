@@ -1,6 +1,6 @@
-"""Jarvis checks his own eyes and hands.
+"""Roktar checks his own eyes and hands.
 
-Whenever Dr Wolf switches Jarvis to Claude Opus (or asks him to check himself), Jarvis runs a
+Whenever Dr Wolf switches Roktar to Claude Opus (or asks him to check himself), Roktar runs a
 fixed check on the real screen, on a test page he serves himself (dock/selftest.html): open a
 web page, read the screen, click by words, click a button from Windows' list, type into a
 box, press keys, scroll, read a whole page, switch windows. The page reports back what really
@@ -9,10 +9,10 @@ happened, so nothing is taken on trust.
 He says the result out loud, and anything that failed is written up in
 logs/selftest/last-report.md with a screenshot of each failure.
 
-When something fails, Claude Opus works out a repair ON A COPY of Jarvis's code (only tools.py,
+When something fails, Claude Opus works out a repair ON A COPY of Roktar's code (only tools.py,
 web.py and common.py may change). The live code is untouched until Dr Wolf has seen the change
-on screen and pressed ALLOW. Then Jarvis backs up the old code and applies the fix, and Dr Wolf
-restarts him (Jarvis never restarts himself). On that start he runs the whole check again: he
+on screen and pressed ALLOW. Then Roktar backs up the old code and applies the fix, and Dr Wolf
+restarts him (Roktar never restarts himself). On that start he runs the whole check again: he
 keeps the fix only if every check passes, otherwise he puts the old code back and asks for one
 more restart. DENY, or no answer within 15 minutes, leaves everything as it was.
 """
@@ -34,14 +34,14 @@ from pathlib import Path
 import tools
 from common import APP, CFG, IS_WIN, LOGS
 
-log = logging.getLogger("jarvis.selftest")
+log = logging.getLogger("roktar.selftest")
 
 DIR = LOGS / "selftest"
 REPORT = DIR / "last-report.md"
 HISTORY = DIR / "history.md"
 NOTE = DIR / "pending.json"              # carries an applied fix across the restart
 STATE_FILE = DIR / "state.json"
-TYPED = "jarvis self test 42"
+TYPED = "roktar self test 42"
 EDITABLE = ("tools.py", "web.py", "common.py")    # the only files a repair may change
 RETRY_AFTER = 6 * 3600                   # after a fix that didn't hold, don't propose another for a while
 _NOWIN = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
@@ -67,18 +67,18 @@ def _write_json(p: Path, d: dict):
 
 
 def pending() -> dict | None:
-    """The note an applied fix left for the next Jarvis."""
+    """The note an applied fix left for the next Roktar."""
     return _read_json(NOTE) or None
 
 
-MECHANIC_RULES = """You are the mechanic for Jarvis-Max, the voice assistant on Dr Wolf's Windows 11 PC
-(a 3840x2160 screen). Jarvis just ran his self-check: fixed actions with his real mouse and
+MECHANIC_RULES = """You are the mechanic for Roktar-Max, the voice assistant on Dr Wolf's Windows 11 PC
+(a 3840x2160 screen). Roktar just ran his self-check: fixed actions with his real mouse and
 keyboard on a test page he serves himself, and the page reported back what really happened.
-Some checks failed. Your job: find the real cause in Jarvis's code and prepare a repair.
+Some checks failed. Your job: find the real cause in Roktar's code and prepare a repair.
 
-The current folder is a WORKING COPY of Jarvis's code. Nothing you change here touches the
-live Jarvis: Dr Wolf sees your change on screen and decides whether to apply it.
-- tools.py: Jarvis's eyes and hands (pyautogui with DPI awareness, Tesseract OCR, Windows UI
+The current folder is a WORKING COPY of Roktar's code. Nothing you change here touches the
+live Roktar: Dr Wolf sees your change on screen and decides whether to apply it.
+- tools.py: Roktar's eyes and hands (pyautogui with DPI awareness, Tesseract OCR, Windows UI
   Automation through comtypes, win32 calls through ctypes). Every tool the check uses is here.
 - web.py: web search. common.py: settings and paths.
 - selftest.py and dock/selftest.html are the self-check itself: read them to see exactly what
@@ -90,11 +90,11 @@ Rules:
 2. Smallest change that fixes it. Keep every tool's name, arguments and meaning.
 3. You may edit ONLY tools.py, web.py and common.py in this folder. Other edits are refused.
 4. Never weaken a safety: the HANDS on/off switch, the corner emergency stop (pyautogui
-   failsafe), Jarvis never clicking or typing into his own window, the refusals to type
+   failsafe), Roktar never clicking or typing into his own window, the refusals to type
    passwords, card numbers or OTPs.
 5. The fix must work for real apps and websites, not just the test page. Never special-case
    the test page, its words or its title.
-6. You can't run anything. If Dr Wolf applies your fix and restarts Jarvis, Jarvis runs the
+6. You can't run anything. If Dr Wolf applies your fix and restarts Roktar, Roktar runs the
    whole check again and keeps the fix only if everything passes.
 7. If the cause is outside the code (a program not installed, a Windows setting, the browser,
    the mouse left in a screen corner, someone using the PC during the check), change nothing
@@ -121,7 +121,7 @@ class SelfTest:
         # set by the server
         self.announce = None                    # async (text)
         self.approve = None                     # async (proposal) -> bool: his ALLOW / DENY on screen
-        self.windows = lambda: 0                # Jarvis windows connected
+        self.windows = lambda: 0                # Roktar windows connected
         self.claude_ok = lambda: False          # Claude is signed in and running
 
     # ---------------------------------------------------------------- page reports ----
@@ -272,7 +272,7 @@ class SelfTest:
                                            "the page felt the click" if s.get("clicks", 0) > 0
                                            else f"the page felt no click.{said(t)}"),
                        wait=lambda s: s.get("clicks", 0) > 0)
-            await step("type", "typing", "type_text", {"text": TYPED, "into": "Type here for Jarvis", "enter": True},
+            await step("type", "typing", "type_text", {"text": TYPED, "into": "Type here for Roktar", "enter": True},
                        lambda e, t, i, s: (s.get("typed") == TYPED and bool(s.get("enter")),
                                            "the page got the exact text and the Enter key"
                                            if s.get("typed") == TYPED and s.get("enter")
@@ -317,7 +317,7 @@ class SelfTest:
         return results, run
 
     async def _tidy(self):
-        """Close the test page's tab and bring Jarvis back to the front."""
+        """Close the test page's tab and bring Roktar back to the front."""
         try:
             if "hands self-test" in tools._foreground()[1].lower():
                 await self._tool("press_keys", {"keys": "ctrl+w"})
@@ -328,7 +328,7 @@ class SelfTest:
 
     # ----------------------------------------------------------------------- report ----
     def _write_report(self, results: list, run: str, reason: str, extra: str = ""):
-        lines = [f"# Jarvis self-check {run}", f"Why: {reason}", ""]
+        lines = [f"# Roktar self-check {run}", f"Why: {reason}", ""]
         for r in results:
             lines.append(f"- {'PASS' if r['ok'] else 'FAIL'} **{r['label']}** "
                          f"({r['tool']} {json.dumps(r['args'])}, {r['secs']}s): {r['why']}")
@@ -409,7 +409,7 @@ class SelfTest:
                            "cause": verdict["cause"], "at": time.time()})
         self._history(f"fix APPLIED with his permission ({', '.join(changed)}): {verdict['summary']}")
         await self._say("Fix applied, sir. It takes effect when you restart me: close my black window and "
-                        "click Start-Jarvis-Max. When I'm back I'll check everything again, and keep the fix "
+                        "click Start-Roktar-Max. When I'm back I'll check everything again, and keep the fix "
                         "only if it all passes.")
 
     def _stage(self, work: Path) -> Path:
@@ -465,7 +465,7 @@ class SelfTest:
 
     def _log_tail(self, n: int = 50) -> str:
         try:
-            lines = (LOGS / "jarvis.log").read_text(encoding="utf-8", errors="replace").splitlines()[-400:]
+            lines = (LOGS / "roktar.log").read_text(encoding="utf-8", errors="replace").splitlines()[-400:]
         except OSError:
             return ""
         keep = [l for l in lines if any(k in l for k in ("ERROR", "Traceback", "Error", "selftest", '  File "'))]
@@ -512,7 +512,7 @@ class SelfTest:
             brief += [f"- {s}" for s in shots]
         tail = self._log_tail()
         if tail:
-            brief.append("\nRecent errors from Jarvis's log:\n" + tail)
+            brief.append("\nRecent errors from Roktar's log:\n" + tail)
         brief.append("\nFind the cause and prepare the repair, following your rules. End with the one-line JSON.")
         opts = ClaudeAgentOptions(model="opus", cwd=str(stage), system_prompt=MECHANIC_RULES,
                                   permission_mode="default", can_use_tool=can_use, max_turns=80,
@@ -529,7 +529,7 @@ class SelfTest:
 
     # ----------------------------------------------------------- after the restart ----
     async def resume(self, note: dict):
-        """The new Jarvis after an applied fix: check again, keep or undo, and say so."""
+        """The new Roktar after an applied fix: check again, keep or undo, and say so."""
         try:
             NOTE.unlink()
         except OSError:

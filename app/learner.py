@@ -1,14 +1,14 @@
-"""Jarvis learns new abilities.
+"""Roktar learns new abilities.
 
-Dr Wolf says "learn how to ..." and Jarvis hands the question to Claude Opus (the same Claude
+Dr Wolf says "learn how to ..." and Roktar hands the question to Claude Opus (the same Claude
 sign-in his brain uses). Opus researches it, writes a clear step-by-step plan for learning it,
-and builds the ability ON A COPY of Jarvis's code, as ONE new file in app/abilities/. Opus can
+and builds the ability ON A COPY of Roktar's code, as ONE new file in app/abilities/. Opus can
 read and search the web but can't run anything, and can only write that one file.
 
-The new file must pass Jarvis's own checks (compiles, loads, has a test, no forbidden moves).
+The new file must pass Roktar's own checks (compiles, loads, has a test, no forbidden moves).
 Then it goes on screen (PC and phone) with the plan and the code: ALLOW installs it, DENY or no
-answer in 15 minutes leaves Jarvis as he was. Dr Wolf restarts Jarvis (Jarvis never restarts
-himself); on that start Jarvis runs the ability's own test. Pass = "ready, try saying ...";
+answer in 15 minutes leaves Roktar as he was. Dr Wolf restarts Roktar (Roktar never restarts
+himself); on that start Roktar runs the ability's own test. Pass = "ready, try saying ...";
 fail = the ability is switched off (moved to abilities/_disabled, never deleted).
 
 If Dr Wolf finds a bug when he tries it, "fix the <name> ability: <what went wrong>" sends it
@@ -30,7 +30,7 @@ from pathlib import Path
 
 from common import APP, IS_WIN, LOGS
 
-log = logging.getLogger("jarvis.learner")
+log = logging.getLogger("roktar.learner")
 
 DIR = LOGS / "abilities"
 NOTE = DIR / "pending.json"             # carries an installed ability across the restart
@@ -49,19 +49,19 @@ FORBIDDEN = [
      r"DisableRealtimeMonitoring|netsh\s+advfirewall", "changes Windows settings"),
     (r"Invoke-Expression|\biex\b|\|\s*(sh|bash|powershell)\b", "downloads and runs code"),
     (r"getpass|keyring|password\s*=|passwd|\bcvv\b|card_?number|\botp\s*=", "handles passwords or card details"),
-    (r"secrets[/\\\"']|SECRETS\b|\.env\b", "reads Jarvis's keys"),
-    (r"^\s*(import|from)\s+(server|brain|selftest|learner|growth|behaviour|signin)\b", "reaches into Jarvis's own insides"),
+    (r"secrets[/\\\"']|SECRETS\b|\.env\b", "reads Roktar's keys"),
+    (r"^\s*(import|from)\s+(server|brain|selftest|learner|growth|behaviour|signin)\b", "reaches into Roktar's own insides"),
     (r"FAILSAFE\s*=\s*False|STATE\.hands\s*=", "switches off a safety"),
-    (r"jarvis\.json|CFG\[[^\]]*\]\s*=", "changes Jarvis's settings"),
+    (r"roktar\.json|CFG\[[^\]]*\]\s*=", "changes Roktar's settings"),
 ]
 SENDS = re.compile(r"\.post\(|\.put\(|smtplib|socket\.|upload|webhook|sendmail", re.I)
 
-TEACHER_RULES = r"""You are the teacher for Jarvis-Max, the voice assistant on Dr Wolf's Windows 11 PC (RTX 5050,
-Python 3.11/3.12, a 3840x2160 screen; his phone is a Samsung Note 10+ reached through Jarvis's
-phone_* tools). Dr Wolf can't code; he asked Jarvis to learn something new. Your job, in order:
+TEACHER_RULES = r"""You are the teacher for Roktar-Max, the voice assistant on Dr Wolf's Windows 11 PC (RTX 5050,
+Python 3.11/3.12, a 3840x2160 screen; his phone is a Samsung Note 10+ reached through Roktar's
+phone_* tools). Dr Wolf can't code; he asked Roktar to learn something new. Your job, in order:
 
 1. LEARN IT. Work out how this is really done: read the code in this folder (tools.py has every
-   tool Jarvis already has; pyproject.toml and uv.lock list the packages installed) and search the
+   tool Roktar already has; pyproject.toml and uv.lock list the packages installed) and search the
    web when you need to. Prefer the simplest way that really works on his PC.
 2. PLAN IT. Write a short step-by-step plan in plain words a non-coder understands: how the
    ability works and what it will do when he asks for it. 3 to 7 steps.
@@ -90,13 +90,13 @@ The file, exactly in this shape:
     TOOLS = [<tool_name>]      # one tool, two or three at most
 
     async def check() -> str:
-        \"\"\"Jarvis's test of this ability, run once after he installs it. Quick (under a minute),
+        \"\"\"Roktar's test of this ability, run once after he installs it. Quick (under a minute),
         changes nothing of his, uses a small sample. Raise an Exception with a plain reason if
         it doesn't work; return a short note if it does.\"\"\"
 
 Rules:
 - Ability tool names must not clash with existing tools (see ALL in tools.py).
-- If the job is just a sequence of things Jarvis can ALREADY do with his tools, make the ability a
+- If the job is just a sequence of things Roktar can ALREADY do with his tools, make the ability a
   "recipe": a tool that returns the exact steps (which existing tools, in what order, with what
   arguments) for the brain to follow. That is the simplest and safest kind; prefer it.
 - To use his hands, call existing tools: `import tools` and `await tools.type_text.handler({...})`
@@ -104,12 +104,12 @@ Rules:
 - Slow or blocking work (files, programs, downloads) goes in `await asyncio.to_thread(...)`.
 - Only the standard library and packages already in pyproject.toml / uv.lock. A program like
   ffmpeg: find it with shutil.which and, if it is missing, return a plain message saying so.
-- Files it makes go in Desktop\Jarvis-Builds\<name>\ (Path.home() / "Desktop" / "Jarvis-Builds"),
-  or where he names. It never deletes, overwrites his own files, or touches anything in Jarvis's
+- Files it makes go in Desktop\Roktar-Builds\<name>\ (Path.home() / "Desktop" / "Roktar-Builds"),
+  or where he names. It never deletes, overwrites his own files, or touches anything in Roktar's
   folder, his keys or his settings.
 - Never: passwords, PINs, OTPs, card numbers, payments, creating accounts, sending messages or
   posting anything as him, changing Windows settings, running downloaded code, a shell
-  (shell=True), eval/exec, importing server/brain/selftest/learner. Jarvis rejects files that do.
+  (shell=True), eval/exec, importing server/brain/selftest/learner. Roktar rejects files that do.
 - Be honest. If it can't be done safely with what is installed (it needs a new package, a paid
   service, an account, a password, or something above), build NOTHING and say why.
 - If you were told to FIX an existing ability, edit only that file, keep its tool names, and fix
@@ -142,7 +142,7 @@ def _write_json(p: Path, d: dict):
 
 
 def pending() -> dict | None:
-    """The note an installed ability left for the next Jarvis."""
+    """The note an installed ability left for the next Roktar."""
     return _read_json(NOTE) or None
 
 
@@ -294,7 +294,7 @@ class Learner:
         allowed = await self.approve({
             "title": f"{'FIX FOR' if fix else 'NEW'} ABILITY: {name.upper()}",
             "button": "ALLOW: ADD THIS ABILITY",
-            "note": "Nothing changes unless you press ALLOW. Then restart Jarvis: he tests the ability "
+            "note": "Nothing changes unless you press ALLOW. Then restart Roktar: he tests the ability "
                     "and tells you what to say to use it. A failed test switches it off again.",
             "summary": f"{v['summary']}\n\nHow I learned it:\n{plan}",
             "cause": f"Try saying: \"{v['try_saying']}\". It {asks}.",
@@ -324,7 +324,7 @@ class Learner:
                            "try_saying": v["try_saying"], "backup": backup, "fix": bool(fix), "at": time.time()})
         self._history(f'{name}: ADDED with his permission ({"fix" if fix else "new"}): {v["summary"]}')
         await self._say("Added, sir. It switches on when you restart me: close my black window and click "
-                        "Start-Jarvis-Max. When I'm back I'll test it and tell you what to say.")
+                        "Start-Roktar-Max. When I'm back I'll test it and tell you what to say.")
 
     # ---------------------------------------------------------------------- helpers ----
     def _stage(self, work: Path, fix: str) -> Path:
@@ -342,7 +342,7 @@ class Learner:
         return stage
 
     def _validate(self, folder: Path, name: str) -> str:
-        """'' if the ability compiles, loads with the rest of Jarvis, and has its test."""
+        """'' if the ability compiles, loads with the rest of Roktar, and has its test."""
         f = folder / "abilities" / f"{name}.py"
         try:
             py_compile.compile(str(f), cfile=str(DIR / "compiled.pyc"), doraise=True)
@@ -359,7 +359,7 @@ class Learner:
         except Exception as e:
             return f"couldn't test loading it: {e}"
         if r.returncode != 0:
-            return "Jarvis doesn't load with it: " + (r.stderr or r.stdout).strip()[-300:]
+            return "Roktar doesn't load with it: " + (r.stderr or r.stdout).strip()[-300:]
         try:
             d = json.loads(r.stdout.strip().splitlines()[-1])
         except (ValueError, IndexError):
@@ -406,12 +406,12 @@ class Learner:
                 return PermissionResultAllow()
             return PermissionResultDeny(message="Not available here: read, search the web, and write the ability file.")
 
-        brief = [f'Dr Wolf asked Jarvis: "{how_to}"']
+        brief = [f'Dr Wolf asked Roktar: "{how_to}"']
         if fix:
             brief.append(f"This is a FIX: he tried the learned ability abilities/{fix}.py and reported the "
                          "problem above. Read that file, find the real cause, and fix it there.")
         have = existing()
-        brief.append("Abilities Jarvis has already learned (in abilities/): " + (", ".join(have) or "none yet"))
+        brief.append("Abilities Roktar has already learned (in abilities/): " + (", ".join(have) or "none yet"))
         brief.append("Learn it, plan it, build it, following your rules. End with the one-line JSON.")
         opts = ClaudeAgentOptions(model="opus", cwd=str(stage), system_prompt=TEACHER_RULES,
                                   permission_mode="default", can_use_tool=can_use, max_turns=120,
@@ -428,7 +428,7 @@ class Learner:
 
     # ----------------------------------------------------------- after the restart ----
     async def resume(self, note: dict):
-        """The new Jarvis after an ability was added: test it, keep or switch it off, and say so."""
+        """The new Roktar after an ability was added: test it, keep or switch it off, and say so."""
         try:
             NOTE.unlink()
         except OSError:

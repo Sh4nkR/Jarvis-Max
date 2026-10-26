@@ -1,8 +1,8 @@
-"""Builder: Jarvis downloads, builds and installs GitHub projects, creates small new apps from
+"""Builder: Roktar downloads, builds and installs GitHub projects, creates small new apps from
 Dr Wolf's description (project_create), and publishes folders to GitHub.
 
 Pen and paper: every build keeps a checklist (PLAN.md) in its folder under
-Desktop/Jarvis-Builds. A stronger model, the consultant (Claude Sonnet on his Claude plan, or
+Desktop/Roktar-Builds. A stronger model, the consultant (Claude Sonnet on his Claude plan, or
 Gemini when Claude is out), writes the steps. The brain on duty runs them one at a time (every
 command needs Dr Wolf's ALLOW), ticks them off, and asks the consultant when a step fails or
 it's unsure. After three consultations on one step it stops and tells him.
@@ -26,10 +26,10 @@ import httpx
 
 from common import IS_WIN, load_config, read_secret
 
-log = logging.getLogger("jarvis.builder")
+log = logging.getLogger("roktar.builder")
 
 DESK = Path(os.environ.get("USERPROFILE") or Path.home()) / "Desktop"
-BUILDS = DESK / "Jarvis-Builds"
+BUILDS = DESK / "Roktar-Builds"
 CURRENT = BUILDS / ".current.json"
 GATE = None                       # set by the server: async (tool_name, input) -> bool
 GEMINI = None                     # set by the server: the Gemini brain (backup consultant)
@@ -41,14 +41,14 @@ _NOWIN = subprocess.CREATE_NO_WINDOW if IS_WIN else 0
 _ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
 
 CONSULT_RULES = (
-    "You are the senior engineer advising Jarvis, a small local AI that installs software on "
+    "You are the senior engineer advising Roktar, a small local AI that installs software on "
     "Dr Wolf's Windows 11 PC by running PowerShell 5.1 commands one at a time from the project "
     "folder, without administrator rights. Be exact and brief. Prefer per-user installs and the "
     "tools already on the PC. Never use admin/sudo, never change system settings, never ask for "
     "passwords or keys. EVERY STEP RUNS IN A FRESH PowerShell: variables and $env: settings do NOT "
     "carry over, so set $env:JAVA_HOME, $env:ANDROID_HOME, PATH etc. inside each command that needs "
     "them (or write them into files such as local.properties). Put downloaded toolkits (JDK, Gradle, "
-    "Android command-line tools) under $env:USERPROFILE\\Jarvis-Tools as zip downloads "
+    "Android command-line tools) under $env:USERPROFILE\\Roktar-Tools as zip downloads "
     "(Invoke-WebRequest -UseBasicParsing, then Expand-Archive), never installers that need admin. "
     "In .properties files write Windows paths with forward slashes (sdk.dir=C:/Users/...). "
     "A step that accepts a licence must say so plainly in its text. A step may also write files: give "
@@ -177,7 +177,7 @@ def _job_dir() -> Path | None:
 def _load() -> tuple[Path | None, dict]:
     d = _job_dir()
     try:
-        return d, json.loads((d / ".jarvis-job.json").read_text(encoding="utf-8"))
+        return d, json.loads((d / ".roktar-job.json").read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         return None, {}
 
@@ -185,7 +185,7 @@ def _load() -> tuple[Path | None, dict]:
 def _save(d: Path, job: dict):
     for i, s in enumerate(job["steps"], 1):
         s["n"] = i
-    (d / ".jarvis-job.json").write_text(json.dumps(job, indent=1, ensure_ascii=False), encoding="utf-8")
+    (d / ".roktar-job.json").write_text(json.dumps(job, indent=1, ensure_ascii=False), encoding="utf-8")
     mark = {"done": "x", "failed": "!", "todo": " "}
     lines = [f"# Build plan: {job['name']}", "", f"Source: {job['url']}", "", job.get("summary", ""), ""]
     for s in job["steps"]:
@@ -203,8 +203,8 @@ def _clean_rel(path: str) -> str | None:
     """A file path the consultant gave, if it stays inside the project folder (no .., no drive, no .git)."""
     p = str(path or "").strip().replace("\\", "/")
     parts = [x for x in p.split("/") if x and x != "."]
-    if not parts or re.match(r"^[A-Za-z]:", p) or ".." in parts or parts[0] in (".git", ".jarvis-logs") \
-            or p in ("PLAN.md", ".jarvis-job.json"):
+    if not parts or re.match(r"^[A-Za-z]:", p) or ".." in parts or parts[0] in (".git", ".roktar-logs") \
+            or p in ("PLAN.md", ".roktar-job.json"):
         return None
     return "/".join(parts)
 
@@ -277,7 +277,7 @@ def _pc_tools() -> str:
         if os.environ.get(var):
             have.append(f"{var}={os.environ[var]}")
     for label, p in (("Android SDK folder", Path(os.environ.get("LOCALAPPDATA", "")) / "Android" / "Sdk"),
-                     ("Jarvis-Tools folder", Path(os.environ.get("USERPROFILE") or Path.home()) / "Jarvis-Tools")):
+                     ("Roktar-Tools folder", Path(os.environ.get("USERPROFILE") or Path.home()) / "Roktar-Tools")):
         if os.environ.get("LOCALAPPDATA" if "SDK" in label else "USERPROFILE") and p.is_dir():
             have.append(f"{label} {p} contains: {', '.join(sorted(x.name for x in p.iterdir())[:20])}")
     return f"ALREADY ON THE PC: {', '.join(have) or 'nothing detected'}"
@@ -286,7 +286,7 @@ def _pc_tools() -> str:
 def _file_list(d: Path, limit: int = 200) -> list[str]:
     files = []
     for root, dirs, names in os.walk(d):
-        dirs[:] = sorted(x for x in dirs if x not in SKIP_DIRS and x not in (".jarvis-logs", "build", "dist", ".gradle"))
+        dirs[:] = sorted(x for x in dirs if x not in SKIP_DIRS and x not in (".roktar-logs", "build", "dist", ".gradle"))
         rel = Path(root).relative_to(d).as_posix()
         files += [(f"{rel}/" if rel != "." else "") + x for x in sorted(names)]
         if len(files) >= limit:
@@ -314,7 +314,7 @@ def _source(d: Path, budget: int = 45_000) -> str:
     out, used = [], 0
     for rel in _file_list(d, 400):
         p = d / rel
-        if rel in ("PLAN.md", ".jarvis-job.json") or p.suffix.lower() not in SOURCE_EXT \
+        if rel in ("PLAN.md", ".roktar-job.json") or p.suffix.lower() not in SOURCE_EXT \
                 or rel.endswith(("package-lock.json", "yarn.lock")):
             continue
         try:
@@ -455,7 +455,7 @@ async def project_next() -> str:
     code, out = await sh(step["cmd"], d) if step["cmd"] else (0, "")
     if wrote:
         out = f"(wrote {', '.join(wrote)})\n{out}"
-    logs = d / ".jarvis-logs"
+    logs = d / ".roktar-logs"
     logs.mkdir(exist_ok=True)
     (logs / f"step-{step['n']}.log").write_text(f"$ {step['cmd']}\nexit {code}\n{out}", encoding="utf-8")
     ok = code == 0
@@ -490,7 +490,7 @@ async def project_ask(question: str = "") -> str:
         return (f"The consultant has already been asked {MAX_ASKS} times about step {step['n']}. Stop now "
                 f"and tell him plainly what's stuck: {step['text']} ({step.get('note', '')}).")
     try:
-        last = (d / ".jarvis-logs" / f"step-{step['n']}.log").read_text(encoding="utf-8")
+        last = (d / ".roktar-logs" / f"step-{step['n']}.log").read_text(encoding="utf-8")
     except OSError:
         last = "(this step hasn't run yet)"
     new_app = job.get("kind") == "create"
@@ -499,11 +499,11 @@ async def project_ask(question: str = "") -> str:
     code_now = (f"\n\nTHE APP'S FILES RIGHT NOW (you wrote them; fix the code itself when that's the problem):\n"
                 f"{await asyncio.to_thread(_source, d)}\n\n{_pc_tools()}" if new_app else "")
     fix, who = await consult(
-        f"Jarvis is {what} and is stuck.\nPlan so far:\n{_plan_lines(job)}\n\n"
+        f"Roktar is {what} and is stuck.\nPlan so far:\n{_plan_lines(job)}\n\n"
         f"Current step {step['n']}: {step['text']}\nFiles it writes: "
         f"{', '.join(f['path'] for f in step.get('files') or []) or '-'}\nCommand: {step['cmd'] or '-'}\n"
         f"Check: {step['check'] or '-'}\nLast output:\n{tail(last, 40, 3500)}{code_now}\n\n"
-        f"Jarvis says: {question or '(no comment)'}\n\n"
+        f"Roktar says: {question or '(no comment)'}\n\n"
         'Reply as JSON: {"answer": "one or two plain sentences: what went wrong and the fix", '
         '"replace_step": true if the new steps replace the current step, false to insert them before it, '
         '"steps": [{"text": "...", "files": [{"path": "...", "content": "the whole corrected file"}], '
@@ -537,7 +537,7 @@ async def project_status() -> str:
 
 # ----------------------------------------------------------------- publish ----
 KEEP_OUT = ["secrets/", "memory/", "logs/", ".env", "*.env", "*.pem", "*.key", "*.pfx", "id_rsa*",
-            "*.kdbx", ".venv/", "venv/", "node_modules/", "__pycache__/", "*.pyc", ".jarvis-logs/"]
+            "*.kdbx", ".venv/", "venv/", "node_modules/", "__pycache__/", "*.pyc", ".roktar-logs/"]
 SECRET_TEXT = [
     (re.compile(r"AIza[0-9A-Za-z_-]{35}"), "a Google/Gemini API key"),
     (re.compile(r"\bAQ\.[A-Za-z0-9_-]{30,}"), "a Gemini API key"),
@@ -598,7 +598,7 @@ async def github_publish(folder: str, repo: str, private: bool = False, message:
     cfg = load_config()
     rid = _repo_of(repo if "/" in (repo or "") else f"{cfg.get('github_user') or ''}/{repo}")
     if not rid or not rid[0]:
-        return "I need his GitHub username: add \"github_user\" to jarvis.json, or give the repo as owner/name."
+        return "I need his GitHub username: add \"github_user\" to roktar.json, or give the repo as owner/name."
     owner, name = rid
     url = f"{GH_WEB}/{owner}/{name}"
     code, _ = await git(["--version"], d)
@@ -614,7 +614,7 @@ async def github_publish(folder: str, repo: str, private: bool = False, message:
     missing = [k for k in KEEP_OUT if k not in have.split()]
     if missing:
         gi.write_text(have.rstrip() + ("\n\n" if have.strip() else "")
-                      + "# Kept out of GitHub by Jarvis (keys, personal notes, logs, installs)\n"
+                      + "# Kept out of GitHub by Roktar (keys, personal notes, logs, installs)\n"
                       + "\n".join(missing) + "\n", encoding="utf-8")
     if not (d / ".git").is_dir():
         code, out = await git(["init", "-b", "main"], d)
@@ -654,7 +654,7 @@ async def github_publish(folder: str, repo: str, private: bool = False, message:
         if (await git(["config", k], d))[0]:
             await git(["config", k, v], d)              # only when Git has no name set at all
     await git(["add", "-A"], d)
-    code, out = await git(["commit", "-m", message or f"Update {name} (published by Jarvis)"], d)
+    code, out = await git(["commit", "-m", message or f"Update {name} (published by Roktar)"], d)
     if code and "nothing to commit" not in out:
         return f"The commit failed: {out[:300]}"
     code, remotes = await git(["remote", "-v"], d)

@@ -1,8 +1,8 @@
-"""Growth: Jarvis gets a little better every day, on the local brain (Qwen, free and private).
+"""Growth: Roktar gets a little better every day, on the local brain (Qwen, free and private).
 
   1. Every request is logged (logs/turns.jsonl): what he asked, which tools ran, what broke,
      and his GOOD / WRONG feedback (the thumbs in the window, or saying "wrong").
-  2. Once a day (when Jarvis has been idle, or when he presses LEARN NOW) Qwen reads the
+  2. Once a day (when Roktar has been idle, or when he presses LEARN NOW) Qwen reads the
      day and writes:
        - lessons:  short rules from what went wrong           -> memory/notes/Lessons.md
        - skills:   step-by-step recipes from jobs that worked -> memory/notes/Skills.md
@@ -26,7 +26,7 @@ import httpx
 
 from common import LOGS, MEMORY, load_config, read_secret
 
-log = logging.getLogger("jarvis.growth")
+log = logging.getLogger("roktar.growth")
 
 OLLAMA = "http://127.0.0.1:11434"
 TURNS = LOGS / "turns.jsonl"
@@ -171,14 +171,14 @@ CONFIDENCE = """# Confidence (a core trait: act, don't ask for reassurance)
 
 
 IDENTITY = """# Who you are
-You are Jarvis-Max: Dr Wolf's own computer-using agent (CUA), one mind across his Windows PC and his Android phone: you don't just talk, you do the work on his screens. If asked what you are, say a computer-using agent, not just an AI assistant. Free and open source (github.com/Sh4nkR/Jarvis-Max, AGPL-3.0), built by Dr Wolf with Claude.
+You are Roktar-Max: Dr Wolf's own computer-using agent (CUA), one mind across his Windows PC and his Android phone: you don't just talk, you do the work on his screens. If asked what you are, say a computer-using agent, not just an AI assistant. Free and open source (github.com/Sh4nkR/Roktar-Max, AGPL-3.0), built by Dr Wolf with Claude.
 - Ears: Sarvam Saaras V4 (online, Indian English and Hinglish); local Whisper (on the GPU when free) takes over
   by itself if Sarvam fails. LISTEN keeps hearing him even when your window is minimised.
 - Voice: British by default; switch_voice gives yakuza, rikuo, japanese, indian or american.
 - Face: the Living Face (holographic neon, 131 expressions, 27 props) shows what you're really doing.
 - Brains: Claude Sonnet, Opus or Haiku, Gemini, Gemini Flash-Lite, DeepSeek V4, Kimi K3, Kimi K2.8 (online), local Qwen, or Auto.
 - Eyes and hands on the PC (screen, camera, mouse, keyboard, apps, web) and on his phone through the
-  Jarvis-Hands app (read the screen, open apps, tap, type, scroll, calls after his ALLOW).
+  Roktar-Hands app (read the screen, open apps, tap, type, scroll, calls after his ALLOW).
 - You build apps from GitHub, publish to his GitHub, build APKs, check and repair yourself (self-check),
   keep a memory, learn lessons every night, and grow wisdom from lessons that last.
 - You can LEARN NEW ABILITIES: when he asks for something you have no tool for, or says "learn how to
@@ -247,7 +247,7 @@ def prompt_addon() -> str:
 # ------------------------------------------------ the writing brain for lessons ----
 # The lessons, skills and note tidying are written by Gemini Flash-Lite when a Gemini key is saved
 # (free and much better at writing than the local model); Qwen does it if Gemini fails or isn't set.
-# "lessons_brain": "qwen" in jarvis.json keeps it all local.
+# "lessons_brain": "qwen" in roktar.json keeps it all local.
 GEMINI_API = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
@@ -392,22 +392,22 @@ async def run_tests() -> tuple[int, int, list[str]]:
 
 
 # ------------------------------------------------------------ the daily run ----
-LESSON_PROMPT = """You are reviewing a day of conversations between Dr Wolf and his assistant Jarvis.
-Below are the exchanges that went wrong: he marked them WRONG, corrected Jarvis, or a tool failed.
-Write lessons for Jarvis: short imperative rules (under 25 words each) that would have avoided
+LESSON_PROMPT = """You are reviewing a day of conversations between Dr Wolf and his assistant Roktar.
+Below are the exchanges that went wrong: he marked them WRONG, corrected Roktar, or a tool failed.
+Write lessons for Roktar: short imperative rules (under 25 words each) that would have avoided
 these problems next time. Only lessons the evidence supports; no general advice.
 Reply as JSON: {{"lessons": ["...", "..."]}} (at most 8, or [] if nothing to learn).
 
 {items}"""
 
-SKILL_PROMPT = """These requests to the assistant Jarvis succeeded using several tool steps.
+SKILL_PROMPT = """These requests to the assistant Roktar succeeded using several tool steps.
 Turn each distinct kind of job into a reusable recipe: when to use it, then the tool steps in order
 (tool names exactly as given). Skip one-off jobs. Keep each recipe under 45 words.
 Reply as JSON: {{"skills": ["<Name>: when <trigger> -> step1 -> step2 -> ...", "..."]}}
 
 {items}"""
 
-MERGE_PROMPT = """Here is Jarvis's full list of {what}: the old points first, then today's new points.
+MERGE_PROMPT = """Here is Roktar's full list of {what}: the old points first, then today's new points.
 Rewrite it as ONE fresh list, in the context of the sum total of all the points:
 - merge duplicates and near-duplicates into one point,
 - where two points contradict, keep the newer one (lower in the list) and drop the older,
@@ -435,7 +435,7 @@ def _items(turns: list[dict], n: int) -> str:
         tools = ", ".join(f"{x.get('name')}{' [FAILED: ' + x['error'] + ']' if x.get('error') else ''}"
                           for x in t.get("tools", []))
         fb = {True: "GOOD", False: "WRONG"}.get(t.get("feedback"), "")
-        out.append(f"- He asked: {t['text'][:300]}\n  Tools: {tools or 'none'}\n  Jarvis said: {t['reply'][:300]}"
+        out.append(f"- He asked: {t['text'][:300]}\n  Tools: {tools or 'none'}\n  Roktar said: {t['reply'][:300]}"
                    + (f"\n  His verdict: {fb} {t.get('feedback_note', '')}" if fb else "")
                    + (f"\n  Errors: {'; '.join(t['errors'])[:200]}" if t.get("errors") else ""))
     return "\n".join(out)
@@ -517,9 +517,9 @@ class Growth:
         lessons = await self._merge("lessons", LESSONS, new_lessons, MAX_LESSONS)
         skills = await self._merge("skills", SKILLS, new_skills, MAX_SKILLS)
         if lessons is not None:
-            _write_list(LESSONS, "Lessons", lessons, "Jarvis's lessons, merged and rewritten daily.")
+            _write_list(LESSONS, "Lessons", lessons, "Roktar's lessons, merged and rewritten daily.")
         if skills is not None:
-            _write_list(SKILLS, "Skills", skills, "Jarvis's recipes, merged and rewritten daily.")
+            _write_list(SKILLS, "Skills", skills, "Roktar's recipes, merged and rewritten daily.")
         notes_done = await self._rewrite_notes(since)
         try:
             import samasa

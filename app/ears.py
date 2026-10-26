@@ -2,12 +2,12 @@
 
 Tuned for Dr Wolf's Indian English: the default model is Whisper large-v3-turbo, which
 was trained on far more accents than the small English-only model, and every clip gets a
-short hint about who is talking and the names he uses (Jarvis, Claude, Qwen...). A few
-names Whisper keeps mishearing are fixed afterwards. Jarvis's own voice doesn't change.
+short hint about who is talking and the names he uses (Roktar, Claude, Qwen...). A few
+names Whisper keeps mishearing are fixed afterwards. Roktar's own voice doesn't change.
 
 Runs on an NVIDIA GPU (float16) when it has room next to the local brain, otherwise on the
-CPU in int8 ("ears_device" in jarvis.json: auto, cuda or cpu). The first start downloads the model (about 1.6 GB) into
-Jarvis-Max/models; until then the small model (already there) does the listening.
+CPU in int8 ("ears_device" in roktar.json: auto, cuda or cpu). The first start downloads the model (about 1.6 GB) into
+Roktar-Max/models; until then the small model (already there) does the listening.
 """
 import logging
 import os
@@ -18,20 +18,20 @@ import uuid
 
 from common import CFG, MODELS, TMP, load_config
 
-log = logging.getLogger("jarvis.ears")
+log = logging.getLogger("roktar.ears")
 
 FALLBACK = "small.en"               # already downloaded; used until the better model is ready
 
 # Who's talking and the words he uses. Whisper leans towards these spellings.
 HINT = ("Dr Wolf is speaking Indian English, sometimes with Hindi words, to his assistant "
-        "Jarvis. Jarvis, switch to Claude Opus, Claude Sonnet, Claude Haiku, Gemini Flash-Lite, DeepSeek or the local Qwen brain. "
+        "Roktar. Roktar, switch to Claude Opus, Claude Sonnet, Claude Haiku, Gemini Flash-Lite, DeepSeek or the local Qwen brain. "
         "Multi search on Google, DeepSeek, Gemini, ChatGPT, YouTube, GitHub, Ollama.")
 
-# Mishearings seen in his logs, fixed after transcription.
+# Likely mishearings of the assistant's name and others, fixed after transcription.
 FIXES = [
-    (re.compile(r"^\s*(java is|javis|jervis|jarves|jarvez|javez|chavez|charvis|jowers|jarwis|travis)\b[,.]?",
-                re.I), "Jarvis,"),
-    (re.compile(r"\b(javis|jervis|jarves|jarvez|javez|charvis|jowers|jarwis)\b", re.I), "Jarvis"),
+    (re.compile(r"^\s*(rock tar|rok tar|rocktar|roctar|roktaar|rocktaar|roktor|roctor|rokter|rakhtar|raktar|rock star|rockstar)\b[,.]?",
+                re.I), "Roktar,"),
+    (re.compile(r"\b(rocktar|roctar|roktaar|rocktaar|roktor|roctor|rokter|rakhtar|raktar)\b", re.I), "Roktar"),
     (re.compile(r"\b(cloud|clawed|clod|clog|clogged|connet|conned|plot|klaud)\s+(brain|opus|sonnet|code)\b", re.I),
      lambda m: "Claude " + m.group(2)),
     (re.compile(r"\b(quen|queen|kwen|qwin)\s+(brain|model|3\.5)\b", re.I), lambda m: "Qwen " + m.group(2)),
@@ -50,8 +50,8 @@ def fix_names(text: str) -> str:
 # secrets/sarvam_key.txt. With no key, no internet, no credits or any error, local Whisper answers instead.
 SARVAM_URL = "https://api.sarvam.ai/speech-to-text"
 SARVAM_KEY = "sarvam_key.txt"
-KEYTERMS = ["Jarvis", "Dr Wolf", "Claude", "Opus", "Sonnet", "Haiku", "Gemini", "Flash-Lite", "Qwen",
-            "Ollama", "DeepSeek", "GitHub", "YouTube", "WhatsApp", "Samasa", "Jarvis-Max", "Jarvis Hands",
+KEYTERMS = ["Roktar", "Dr Wolf", "Claude", "Opus", "Sonnet", "Haiku", "Gemini", "Flash-Lite", "Qwen",
+            "Ollama", "DeepSeek", "GitHub", "YouTube", "WhatsApp", "Samasa", "Roktar-Max", "Roktar Hands",
             "multi search", "Android", "APK", "Chrome"]
 
 
@@ -132,7 +132,7 @@ def _qwen_reserve(cfg: dict) -> int:
 
 
 def _gpu_ok() -> bool:
-    """Who gets the graphics card. ears_device in jarvis.json: "auto" (default), "cuda" or "cpu".
+    """Who gets the graphics card. ears_device in roktar.json: "auto" (default), "cuda" or "cpu".
     Auto: brain = local Qwen -> Qwen keeps the GPU, ears on the CPU.
           brain = Gemini or Claude -> Qwen is moved out of the GPU and the ears use it.
           brain = auto -> the ears use it only if there's still room next to Qwen."""
@@ -174,7 +174,7 @@ def _gpu_ok() -> bool:
 
 class Ears:
     def __init__(self):
-        # "ears_model" in jarvis.json picks another model (the old "stt_model": "small.en" is ignored)
+        # "ears_model" in roktar.json picks another model (the old "stt_model": "small.en" is ignored)
         self.name = CFG.get("ears_model") or "large-v3-turbo"
         self.using = ""
         self.model = None

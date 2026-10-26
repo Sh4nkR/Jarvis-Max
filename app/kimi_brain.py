@@ -4,11 +4,11 @@ Same reach as the other brains: the web, his screen, mouse and keyboard, phone, 
 (each command needs his ALLOW), memory notes, learned abilities and switch_brain. Kimi speaks the
 OpenAI chat format, so it reuses the DeepSeek brain's turn loop; only the address, the model and a
 few request rules differ:
-- K3 always thinks; "kimi_effort" in jarvis.json (low / high / max, default low for quick voice
+- K3 always thinks; "kimi_effort" in roktar.json (low / high / max, default low for quick voice
   replies) sets how hard. Temperature and other sampling settings are fixed by Kimi: never sent.
 - Kimi needs the whole assistant message back after a tool call, including its reasoning, so the
   reasoning is kept in the conversation (DeepSeek's is not).
-The key lives in Jarvis-Max/secrets/kimi_key.txt (never uploaded). "kimi_model" picks the model:
+The key lives in Roktar-Max/secrets/kimi_key.txt (never uploaded). "kimi_model" picks the model:
 kimi-k3, or kimi-k2.8 (if the key can't use kimi-k2.8, the newest Kimi K2 model it can use is taken).
 Text only for now: pictures reach it as words (read_screen_text), like DeepSeek.
 """
@@ -23,9 +23,9 @@ from common import load_config, read_secret
 from deepseek_brain import DeepSeekBrain, _Refused
 from local_brain import CALL, system_prompt, tool_specs
 
-log = logging.getLogger("jarvis.kimi")
+log = logging.getLogger("roktar.kimi")
 
-API = os.environ.get("JARVIS_KIMI_API", "https://api.moonshot.ai/v1")
+API = os.environ.get("ROKTAR_KIMI_API", "https://api.moonshot.ai/v1")
 KEY_FILE = "kimi_key.txt"
 
 _OLD = 'running on your local brain: a model on {c}\'s own PC instead of Claude.\nIf he asks which brain you\'re on, say "my local brain, Qwen".'

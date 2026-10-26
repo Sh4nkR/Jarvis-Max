@@ -1,4 +1,4 @@
-"""Samasa: compound codewords for Jarvis's repeated multi-step jobs.
+"""Samasa: compound codewords for Roktar's repeated multi-step jobs.
 
 Like a Sanskrit samasa (compound word), one codeword stands for a whole sequence of tool calls,
 e.g. OPN-VRF = open_app, then look_at_screen to verify. The brain calls the `samasa` tool once
@@ -133,7 +133,7 @@ def mine(min_count: int = 5) -> int:
     known = {tuple(s["tool"] for s in c.get("steps", [])) for c in load().values()}
     rows = [(n, g) for g, n in seqs.most_common(30) if n >= min_count and g not in known][:12]
     PROPOSALS.write_text(
-        "# Samasa proposals\n\n_Tool sequences Jarvis keeps repeating (from logs/turns.jsonl), "
+        "# Samasa proposals\n\n_Tool sequences Roktar keeps repeating (from logs/turns.jsonl), "
         f"mined {time.strftime('%Y-%m-%d %H:%M')}. Opus or Dr Wolf may turn one into a codeword "
         "in memory/samasa.json._\n\n"
         + "\n".join(f"- {n} times: {' > '.join(g)}" for n, g in rows) + "\n", encoding="utf-8")

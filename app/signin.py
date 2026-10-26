@@ -1,6 +1,6 @@
 """Claude sign-in: check it, and open the sign-in page when it's missing.
 
-Jarvis's brain is Claude Code, the same one jaredrhod's backtalk uses. It runs
+Roktar's brain is Claude Code, the same one jaredrhod's backtalk uses. It runs
 on your Claude plan, so there is no API key. The CLI ships inside the
 claude-agent-sdk package; no separate install is needed.
 
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     print()
     print("  ONE-TIME STEP: sign in to Claude.")
     print("  Your browser will open a Claude page. Sign in and click Authorize.")
-    print("  (This is your own Claude account. Jarvis never sees your password.)")
+    print("  (This is your own Claude account. Roktar never sees your password.)")
     print()
     try:
         login()
@@ -73,5 +73,5 @@ if __name__ == "__main__":
     if s.get("loggedIn"):
         print("  Claude sign-in ............ OK")
         sys.exit(0)
-    print("  Sign-in did not complete. Jarvis will still open and show a SIGN IN button.")
+    print("  Sign-in did not complete. Roktar will still open and show a SIGN IN button.")
     sys.exit(1)

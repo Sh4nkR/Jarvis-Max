@@ -1,4 +1,4 @@
-"""Jarvis's two Android build skills.
+"""Roktar's two Android build skills.
 
 1. android_build: build a debug APK HERE on the PC with the Android Studio tools already
    installed (its own Java "jbr", the Android SDK in %LOCALAPPDATA%\\Android\\Sdk, and the
@@ -6,9 +6,9 @@
    project's own build scripts.
 2. github_build + github_build_status: push the project to his GitHub (through github_publish:
    safety scan, his ALLOW, never a force-push) with a build recipe that makes GitHub's servers
-   build the APK, then later check the build and download the APK to Desktop\\Jarvis-Builds\\APKs.
+   build the APK, then later check the build and download the APK to Desktop\\Roktar-Builds\\APKs.
 
-Debug builds only: a release build needs a signing key, and Jarvis never handles keys.
+Debug builds only: a release build needs a signing key, and Roktar never handles keys.
 """
 import asyncio
 import glob
@@ -139,7 +139,7 @@ async def android_build(folder: str) -> str:
 
 
 # ------------------------------------------------------ 2. GitHub cloud build ----
-WORKFLOW = """name: Jarvis APK build
+WORKFLOW = """name: Roktar APK build
 on:
   push:
     branches: [ main ]
@@ -186,9 +186,9 @@ def _ensure_workflow(d: Path, root: Path) -> str:
     rel = root.relative_to(d).as_posix()
     rel = "." if rel in ("", ".") else rel
     wf_dir.mkdir(parents=True, exist_ok=True)
-    (wf_dir / "jarvis-apk.yml").write_text(
+    (wf_dir / "roktar-apk.yml").write_text(
         WORKFLOW.replace("__DIR__", rel).replace("__PRE__", "" if rel == "." else rel + "/"), encoding="utf-8")
-    return "I added a build recipe (.github/workflows/jarvis-apk.yml)"
+    return "I added a build recipe (.github/workflows/roktar-apk.yml)"
 
 
 async def github_build(folder: str, repo: str, private: bool = False, message: str = "") -> str:

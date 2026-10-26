@@ -1,6 +1,6 @@
 """Wisdom: knowledge + time = wisdom (Dr Wolf, Oct 2026).
 
-KNOWLEDGE is what Jarvis learned recently: his Lessons and Skills, rewritten every night.
+KNOWLEDGE is what Roktar learned recently: his Lessons and Skills, rewritten every night.
 WISDOM is knowledge that has stood the test of time: a lesson that survived at least 7 days and
 5 nightly reviews gets distilled into one short sutra and written into notes/Wisdom.md, which is
 never rewritten automatically. Every brain reads it as part of his character, not as rules.
@@ -24,7 +24,7 @@ AGES = MEMORY / ".growth" / "lesson-ages.json"
 MATURE_DAYS, MATURE_NIGHTS, MAX_WISDOM = 7, 5, 40
 FOUNDING = ["Forgive, but never forget: hold no grudge in tone, keep every lesson. (Dr Wolf)"]
 
-SUTRA_PROMPT = """You are distilling one day of Jarvis's work into ONE sutra: a single compact line (max 18 words)
+SUTRA_PROMPT = """You are distilling one day of Roktar's work into ONE sutra: a single compact line (max 18 words)
 that carries the essence of what the day taught, like a Sanskrit shloka compresses wisdom into one line.
 Plain English, timeless, no dates, no names of files. Reply as JSON: {{"sutra": "..."}}
 
@@ -54,7 +54,7 @@ def ensure_files():
     NOTES.mkdir(parents=True, exist_ok=True)
     if not WISDOM.exists():
         WISDOM.write_text("# Wisdom\n\n_Knowledge that has stood the test of time. Never rewritten automatically; "
-                          "it shapes who Jarvis is._\n\n" + "\n".join(f"- {w}" for w in FOUNDING) + "\n", encoding="utf-8")
+                          "it shapes who Roktar is._\n\n" + "\n".join(f"- {w}" for w in FOUNDING) + "\n", encoding="utf-8")
     if not SUTRAS.exists():
         SUTRAS.write_text("# Sutras\n\n_One line a day: the essence of the day's work._\n\n", encoding="utf-8")
 

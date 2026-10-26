@@ -31,8 +31,8 @@
      AV.samples    Float32Array(64), 0..1 normalized waveform ring
      AV.alert      bool, optional attention signal
      AV.micLevel   0..1 your microphone (only if init({mic:true}))
-     AV.name       display name from config ("JARVIS" by default)
-     AV.label      the dotted chip label ("J.A.R.V.I.S.")
+     AV.name       display name from config ("ROKTAR" by default)
+     AV.label      the dotted chip label ("R.O.K.T.A.R.")
      AV.badge      optional handle from config ("" by default)
 
    Modes:
@@ -66,7 +66,7 @@ const AV = (() => {
   const A = {
     state: "idle", level: 0, env: 0, alert: false, micLevel: 0,
     samples: new Float32Array(64),
-    name: "JARVIS", label: "J.A.R.V.I.S.", badge: "",
+    name: "ROKTAR", label: "R.O.K.T.A.R.", badge: "",
     demo: DEMO, shot: SHOT, faces: [],
     _sndOn: true, _mic: false, _readyCbs: [], _ready: false,
   };
@@ -294,7 +294,7 @@ const AV = (() => {
     if (A._mic && !DEMO) micStart();
     if (opts.sound !== false) soundInit(); else A._sndWant = false;
     if (DEMO) {
-      applyConfig({ name: Q.get("name") || "JARVIS" });
+      applyConfig({ name: Q.get("name") || "ROKTAR" });
     } else {
       fetch("/config", { cache: "no-store" })
         .then(r => r.json()).then(applyConfig)

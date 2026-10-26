@@ -1,6 +1,6 @@
-"""Jarvis's hands on Dr Wolf's phone.
+"""Roktar's hands on Dr Wolf's phone.
 
-The Jarvis Hands app on the phone (same Wi-Fi) long-polls this server for one phone action at a
+The Roktar Hands app on the phone (same Wi-Fi) long-polls this server for one phone action at a
 time and posts back what happened. The brain drives it through the phone_* tools in tools.py,
 which call PHONE.do(...). Everything runs only while the phone app is connected and switched on;
 if it isn't, the tools say so plainly instead of pretending.
@@ -22,7 +22,7 @@ class PhoneHands:
     async def do(self, tool: str, args: dict, timeout: float = 40) -> str:
         """Queue one action for the phone and wait for its result. Returns spoken text."""
         if not self.connected():
-            return ("Your phone isn't connected, sir. Open Jarvis Hands on the phone, switch me on, "
+            return ("Your phone isn't connected, sir. Open Roktar Hands on the phone, switch me on, "
                     "and make sure it's on the same Wi-Fi.")
         aid = uuid.uuid4().hex
         fut = asyncio.get_running_loop().create_future()
@@ -31,7 +31,7 @@ class PhoneHands:
         try:
             return await asyncio.wait_for(fut, timeout)
         except asyncio.TimeoutError:
-            return "The phone didn't answer in time. Is Jarvis Hands still on and the screen awake?"
+            return "The phone didn't answer in time. Is Roktar Hands still on and the screen awake?"
         finally:
             self.waiting.pop(aid, None)
 

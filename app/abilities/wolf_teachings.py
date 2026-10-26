@@ -1,12 +1,12 @@
-"""Turns what Dr Wolf teaches, shows or advises into Jarvis's own saved skills, principles and know-how.
+"""Turns what Dr Wolf teaches, shows or advises into Roktar's own saved skills, principles and know-how.
 Learned from: "learn skills and abilities directly from Dr Wolf's teachings, knowledge, and guidance, adapting his wisdom into my own learned capabilities"
 Plan:
-1. When Dr Wolf says "let me teach you", "remember this lesson" or "here's my advice", Jarvis opens this recipe.
-2. Jarvis listens (or watches his screen if he shows how), and sorts the teaching: a how-to skill, a rule of wisdom, a fact, or a preference.
-3. Jarvis says it back in one or two plain lines and asks "Did I get that right?", fixing it until he says yes.
-4. Jarvis saves it in its own memory: a how-to becomes a step-by-step skill guide every brain can follow; wisdom, facts and preferences go into his teachings notebook.
-5. If the teaching needs a power Jarvis doesn't have yet, Jarvis offers to learn that as a new ability (with his ALLOW).
-6. Jarvis tells him what it learned and where; it can practise the new skill only when he says so.
+1. When Dr Wolf says "let me teach you", "remember this lesson" or "here's my advice", Roktar opens this recipe.
+2. Roktar listens (or watches his screen if he shows how), and sorts the teaching: a how-to skill, a rule of wisdom, a fact, or a preference.
+3. Roktar says it back in one or two plain lines and asks "Did I get that right?", fixing it until he says yes.
+4. Roktar saves it in its own memory: a how-to becomes a step-by-step skill guide every brain can follow; wisdom, facts and preferences go into his teachings notebook.
+5. If the teaching needs a power Roktar doesn't have yet, Roktar offers to learn that as a new ability (with his ALLOW).
+6. Roktar tells him what it learned and where; it can practise the new skill only when he says so.
 """
 import asyncio
 from tools import tool, _say, errors_as_words, STATE  # noqa: F401

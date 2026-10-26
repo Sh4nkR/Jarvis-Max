@@ -9,7 +9,7 @@ Qwen 3.5 9B at 4-bit fits the RTX 5050's 8 GB, reads pictures and calls tools. I
 weaker than Claude at long jobs, so the tools do the heavy lifting (one "research" call
 searches and reads several pages) and the conversation is trimmed to fit its memory.
 
-"brain_mode" in jarvis.json: "auto" (Claude first, local when Claude is out),
+"brain_mode" in roktar.json: "auto" (Claude first, local when Claude is out),
 "claude", or "local".
 """
 import asyncio
@@ -32,11 +32,11 @@ from brain import CALL, NAME, _SENT_END
 from common import IS_WIN, MEMORY, load_config
 from growth import prompt_addon
 
-log = logging.getLogger("jarvis.local")
+log = logging.getLogger("roktar.local")
 
 OLLAMA = "http://127.0.0.1:11434"
 DEFAULT_MODEL = "qwen3.5:9b"
-DEFAULT_CTX = 16384                 # tokens of working memory; "local_ctx" in jarvis.json changes it
+DEFAULT_CTX = 16384                 # tokens of working memory; "local_ctx" in roktar.json changes it
 REPLY_ROOM = 1200                   # kept free for the answer
 IMAGE_TOKENS = 700                  # roughly what one 1024-px screenshot costs
 IMAGE_WIDTH = 1024
@@ -54,7 +54,7 @@ If he asks which brain you're on, say "my local brain, Qwen". You are online: yo
 web, read pages, see his screen, and use his mouse, keyboard, files and PowerShell.
 Never say you're offline unless a web tool reports a network error.
 
-He talks to you through the Jarvis window. His speech is transcribed (Indian English, so
+He talks to you through the Roktar window. His speech is transcribed (Indian English, so
 expect odd spellings; go with the likeliest meaning) and every word you write is read
 aloud. Speak, don't write: one to three short sentences, no lists or headings unless he
 asks. Before a slow job say one short line first, like "One moment, sir."
@@ -91,7 +91,7 @@ asks. Before a slow job say one short line first, like "One moment, sir."
   approves each one on screen. If he says no, don't try another way.
 - To change brain (back to Claude, to Sonnet, Opus, Haiku, Gemini, Gemini Flash-Lite or Auto): call switch_brain at once with
   the brain he named ("claude" if he just says Claude). It's his choice; never refuse, argue
-  or explain it away. Jarvis restarts and confirms the new brain.
+  or explain it away. Roktar restarts and confirms the new brain.
 - Lessons: when he tells you to go to your lessons, classes or daily learning, call
   start_lessons. Never say you're learning without calling it.
 - GitHub builds (pen and paper): when he asks to download, build or install a GitHub project,

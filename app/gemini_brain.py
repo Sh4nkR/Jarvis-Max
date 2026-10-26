@@ -5,8 +5,8 @@ his screen and camera, mouse and keyboard, files, PowerShell (each command needs
 ALLOW), memory notes and switch_brain. Only the thinking happens at Google instead of on
 this PC. It borrows the local brain's tools and rules and talks Gemini's own format.
 
-The key lives in Jarvis-Max/secrets/gemini_key.txt (never uploaded to GitHub).
-"gemini_model" in jarvis.json picks the model; "auto" takes the newest Gemini Flash the key
+The key lives in Roktar-Max/secrets/gemini_key.txt (never uploaded to GitHub).
+"gemini_model" in roktar.json picks the model; "auto" takes the newest Gemini Flash the key
 can use. Note: a Google AI Pro membership doesn't pay for API use; the key runs on the
 Gemini API's free tier (or on Cloud billing if he adds it).
 """
@@ -24,9 +24,9 @@ from common import load_config, read_secret
 from local_brain import (CALL, LOCAL_PROMPT, LOCAL_TOOLS, MAX_ROUNDS, PC, LocalBrain,
                          _SENT_END, _small_picture, system_prompt, tool_specs)
 
-log = logging.getLogger("jarvis.gemini")
+log = logging.getLogger("roktar.gemini")
 
-API = os.environ.get("JARVIS_GEMINI_API", "https://generativelanguage.googleapis.com/v1beta")
+API = os.environ.get("ROKTAR_GEMINI_API", "https://generativelanguage.googleapis.com/v1beta")
 KEY_FILE = "gemini_key.txt"
 KEEP_TURNS = 12                     # earlier requests are forgotten after this many
 

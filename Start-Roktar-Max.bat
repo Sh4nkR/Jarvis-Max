@@ -1,8 +1,8 @@
 @echo off
-rem Jarvis-Max: the only file you need to click.
+rem Roktar-Max: the only file you need to click.
 rem First start sets everything up by itself (a few minutes). Later starts take seconds.
 setlocal
-title Jarvis-Max
+title Roktar-Max
 cd /d "%~dp0app"
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
@@ -15,7 +15,7 @@ echo        J . A . R . V . I . S .    starting up
 echo   ==============================================
 echo.
 
-rem --- 1. uv: the small tool that sets up Jarvis's Python and parts ---
+rem --- 1. uv: the small tool that sets up Roktar's Python and parts ---
 set "UV="
 where uv >nul 2>nul && set "UV=uv"
 if not defined UV if exist "%USERPROFILE%\.local\bin\uv.exe" set "UV=%USERPROFILE%\.local\bin\uv.exe"
@@ -27,9 +27,9 @@ if not defined UV (
 )
 if not defined UV goto no_uv
 
-rem --- 2. Jarvis's parts (first start downloads them) ---
+rem --- 2. Roktar's parts (first start downloads them) ---
 if not exist ".venv\" (
-  echo   FIRST START: downloading Jarvis's parts, about 1 GB in all.
+  echo   FIRST START: downloading Roktar's parts, about 1 GB in all.
   echo   This takes a few minutes. Later starts take seconds.
   echo.
 )
@@ -42,9 +42,9 @@ if errorlevel 1 goto sync_failed
 rem --- 3. Claude sign-in: asks only the first time ---
 "%UV%" run --no-sync python signin.py
 
-rem --- 4. Start Jarvis. Its window opens by itself. ---
+rem --- 4. Start Roktar. Its window opens by itself. ---
 echo.
-echo   Starting Jarvis...
+echo   Starting Roktar...
 "%UV%" run --no-sync python server.py
 if errorlevel 1 goto crashed
 goto end
@@ -52,21 +52,21 @@ goto end
 :no_uv
 echo.
 echo   Couldn't install uv (no internet?). Connect to the internet and click
-echo   Start-Jarvis-Max.bat again.
+echo   Start-Roktar-Max.bat again.
 pause
 goto end
 
 :sync_failed
 echo.
-echo   Downloading Jarvis's parts failed. Check the internet connection and
-echo   click Start-Jarvis-Max.bat again. It carries on where it stopped.
+echo   Downloading Roktar's parts failed. Check the internet connection and
+echo   click Start-Roktar-Max.bat again. It carries on where it stopped.
 pause
 goto end
 
 :crashed
 echo.
-echo   Jarvis stopped with an error. The message is above, and also in
-echo   logs\jarvis.log inside the Jarvis-Max folder.
+echo   Roktar stopped with an error. The message is above, and also in
+echo   logs\roktar.log inside the Roktar-Max folder.
 pause
 
 :end

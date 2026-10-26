@@ -5,8 +5,8 @@ files, PowerShell (each command needs his ALLOW), memory notes and switch_brain.
 local brain's tools and rules; DeepSeek speaks the OpenAI chat format, so only the transport differs.
 
 DeepSeek reads text only: screenshots from look_at_screen reach it as their words (read_screen_text
-is the way it sees). The key lives in Jarvis-Max/secrets/deepseek_key.txt (never uploaded to GitHub).
-"deepseek_model" in jarvis.json picks the model; "auto" takes deepseek-v4-flash ("deepseek-v4-pro" for the bigger one).
+is the way it sees). The key lives in Roktar-Max/secrets/deepseek_key.txt (never uploaded to GitHub).
+"deepseek_model" in roktar.json picks the model; "auto" takes deepseek-v4-flash ("deepseek-v4-pro" for the bigger one).
 Online only: with no key the window asks for one (no local stand-in model).
 """
 import asyncio
@@ -21,9 +21,9 @@ from common import load_config, read_secret
 from local_brain import (CALL, MAX_ROUNDS, OLLAMA, PC, REPLY_ROOM, LocalBrain, _SENT_END, fit,
                          system_prompt, tool_specs)
 
-log = logging.getLogger("jarvis.deepseek")
+log = logging.getLogger("roktar.deepseek")
 
-API = os.environ.get("JARVIS_DEEPSEEK_API", "https://api.deepseek.com")
+API = os.environ.get("ROKTAR_DEEPSEEK_API", "https://api.deepseek.com")
 KEY_FILE = "deepseek_key.txt"
 BUDGET = 48000                       # tokens of conversation sent each time (keeps the bill small)
 
@@ -38,7 +38,7 @@ _FREE = ('running on the DeepSeek brain (DeepSeek R1, a free model on {c}\'s own
          'use read_screen_text or see_buttons, whose words and numbers you can read.')
 
 # With no API key, DeepSeek runs free on this PC through Ollama (the same engine as the local brain).
-FREE_MODEL = os.environ.get("JARVIS_DEEPSEEK_LOCAL", "deepseek-r1:8b")
+FREE_MODEL = os.environ.get("ROKTAR_DEEPSEEK_LOCAL", "deepseek-r1:8b")
 
 
 def deepseek_prompt(free: bool = False) -> str:

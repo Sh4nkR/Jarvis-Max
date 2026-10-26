@@ -1,4 +1,4 @@
-# TANTRA 05: "The Living Face": Jarvis's new face (DESIGN SPEC v1)
+# TANTRA 05: "The Living Face": Roktar's new face (DESIGN SPEC v1)
 Architect: Opus · Vision: Dr Wolf · Status: design for review, then production
 Replaces: Ink Lotus (kept as a fallback face)
 
@@ -8,11 +8,11 @@ Replaces: Ink Lotus (kept as a fallback face)
 A large, faint, holographic **human-like face** floats in the middle of a dark screen.
 Everything is drawn in **coloured smoke and neon light**: dreamy, translucent, slow-glowing, with 3D depth.
 The face **is never still and never boring**:
-- Around it, **holographic props** appear for whatever Jarvis is doing (ear, hands, laptop, globe, mill, phone, dancers...).
+- Around it, **holographic props** appear for whatever Roktar is doing (ear, hands, laptop, globe, mill, phone, dancers...).
 - The face **watches its own props**: the eyes follow them, it reacts, smiles, frowns, raises a brow, scratches its head.
 - Its **mood** changes with the job, with your tone of voice, and with success or failure.
 
-So anyone in the room can tell at a glance **what Jarvis is doing, how it's going, and how he "feels" about it.**
+So anyone in the room can tell at a glance **what Roktar is doing, how it's going, and how he "feels" about it.**
 
 ---
 
@@ -74,7 +74,7 @@ Grouped by family. **96 expressions.** Each has a code name the mood engine uses
 ## 4. The PROP library (what appears around the face)
 Each prop = a short looping neon/smoke animation, placed in one of 8 "stations" around the face (left, right, top, top-left…). The face's eyes always track the active prop.
 
-| # | Jarvis moment | Prop animation | Face reaction | Colour |
+| # | Roktar moment | Prop animation | Face reaction | Colour |
 |---|---|---|---|---|
 | 1 | **Listening to you** | Faint holographic **ear** beside the face, sound ripples entering it | attentive, slight head tilt toward the ear, small nods | Teal |
 | 2 | **Thinking** | Face fades to **X-ray/MRI**: 3D brain inside the head, **circuits racing over both hemispheres** | eyes up-left, thoughtful | Violet |
@@ -97,7 +97,7 @@ Each prop = a short looping neon/smoke animation, placed in one of 8 "stations" 
 | 19 | **Big task completed** | Confetti of light sparks; face **blows out with pursed lips**, then smiles | exasperated-relief → proud | Gold |
 | 20 | **Task failed** | Props crumble into smoke | chin down, low morale; recovers after 4 s | Dim red |
 
-### My additions (fit your doctor + Jarvis world)
+### My additions (fit your doctor + Roktar world)
 | # | Moment | Prop | Face |
 |---|---|---|---|
 | 21 | **Self-check** | Face wears a **stethoscope**, checks its own pulse; ECG line runs | serious "doctor" look |

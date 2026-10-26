@@ -54,13 +54,13 @@
 <canvas id="stage"></canvas>
 <div id="word">IDLE</div>
 <div id="step"></div>
-<div id="hud" title="Tap: Jarvis's journal"></div>
+<div id="hud" title="Tap: Roktar's journal"></div>
 <div id="journal"></div>
 <script src="../../core.js"></script>
 <script>
 "use strict";
 /* THE LIVING FACE — full package (TANTRA-05, all phases).
-   A faint neon/smoke holographic face. Props around it show WHAT Jarvis is doing; 96 expressions show
+   A faint neon/smoke holographic face. Props around it show WHAT Roktar is doing; 96 expressions show
    HOW he feels (driven by state, job, outcome, the words of his reply and of your message).
    Sound: soft FX only (never the real-world sound of the job), all under 0.4 s.
    Test hooks: ?shot=<state>&prop=<name>&mode=allow|error|offline&expr=<name> */
@@ -166,7 +166,7 @@ function setExpr(n) { if (!EX[n]) n = "calm"; exprName = n; const e = EX[n];
   Object.assign(target, NEUTRAL); for (const k of KEYS) if (k in e) target[k] = e[k];
   exprHand = e.hand || null; exprFx = e.fx || null; exprLook = e.look || null; recent.push(n); if (recent.length > 3) recent.shift(); }
 
-/* =============== WHAT JARVIS IS DOING =============== */
+/* =============== WHAT ROKTAR IS DOING =============== */
 const $ = id => document.getElementById(id);
 const JV = () => window.JV_FACE || { reply: () => "", offline: () => false, camera: () => false };
 const allowShown = () => !!($("jv-perm") && $("jv-perm").classList.contains("show"));
@@ -663,7 +663,7 @@ async function openJournal() {
       const what = e.detail || e.result || e.error || e.said || "";
       return `<div class="ev ${cls}"><b>${tm} ${ICON[e.phase] || "•"} ${e.label}</b> · ${e.mood}${e.level_up ? " · LEVEL " + e.level_up + "!" : ""}<br><span style="opacity:.7">${String(what).replace(/</g, "&lt;").slice(0, 140)}</span></div>`; }).join("");
     jr.innerHTML = `<h3>JOURNAL · LV ${v.level} · ${v.xp} XP</h3>` + (rows || "Nothing yet today.");
-  } catch (e) { jr.innerHTML = "<h3>JOURNAL</h3>Jarvis isn't reachable."; }
+  } catch (e) { jr.innerHTML = "<h3>JOURNAL</h3>Roktar isn't reachable."; }
 }
 hud.addEventListener("click", openJournal);
 jr.addEventListener("click", () => { jr.style.display = "none"; });

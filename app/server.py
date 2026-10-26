@@ -1,12 +1,12 @@
-"""Jarvis: one local server that runs everything.
+"""Roktar: one local server that runs everything.
 
   http://127.0.0.1:8795/          the window: jaredrhod's face + the button dock
-  /ws                             live link between the window and Jarvis
+  /ws                             live link between the window and Roktar
   /state, /config                 what the face reads (same contract as ai-visualizer)
   /api/...                        speech-to-text, status, memory notes
 
-This PC and his phone on the same home Wi-Fi can open it ("phone_access" in jarvis.json).
-Only Jarvis's own page may talk to it: every live connection and every POST must come from
+This PC and his phone on the same home Wi-Fi can open it ("phone_access" in roktar.json).
+Only Roktar's own page may talk to it: every live connection and every POST must come from
 that page. Other websites open in a browser are refused.
 """
 import asyncio
@@ -56,8 +56,8 @@ import behaviour                                # noqa: E402
 PORT = int(CFG["port"])
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 ORIGINS = {f"http://{h}" for h in HOSTS}
-PHONE = bool(CFG.get("phone_access", True))        # his phone on the same Wi-Fi may open Jarvis too
-TLS_PORT = PORT + 1                                # the Jarvis Hands app connects here over HTTPS
+PHONE = bool(CFG.get("phone_access", True))        # his phone on the same Wi-Fi may open Roktar too
+TLS_PORT = PORT + 1                                # the Roktar Hands app connects here over HTTPS
 FACE_DIR = (APP / "face").resolve()
 DOCK_DIR = (APP / "dock").resolve()
 FACES = ["living", "wolf", "lotus", "board", "radial", "rain", "neural"]
@@ -70,8 +70,8 @@ INJECT = ('<meta name="viewport" content="width=device-width, initial-scale=1, m
 
 
 def host_ok(host: str) -> bool:
-    """Jarvis answers only to his own address: this PC, or a home-network address typed as numbers
-    (the phone). A website's name made to point at Jarvis (the DNS-rebinding trick) never matches."""
+    """Roktar answers only to his own address: this PC, or a home-network address typed as numbers
+    (the phone). A website's name made to point at Roktar (the DNS-rebinding trick) never matches."""
     if host in HOSTS:
         return True
     if not PHONE:
@@ -86,7 +86,7 @@ def host_ok(host: str) -> bool:
 
 
 def origin_ok(request) -> bool:
-    """Only Jarvis's own page (on the PC or the phone) may connect or change things."""
+    """Only Roktar's own page (on the PC or the phone) may connect or change things."""
     o = request.headers.get("Origin")
     if o is None:
         return False
@@ -109,10 +109,10 @@ def lan_ip() -> str | None:
 
 def _tls_context():
     """A self-signed certificate (made once, kept in secrets/, never pushed) so the phone app can
-    reach Jarvis over HTTPS. A browser's microphone only works on an https page; the app trusts
+    reach Roktar over HTTPS. A browser's microphone only works on an https page; the app trusts
     this one certificate for the PC's own address. Nothing leaves the home Wi-Fi; no password is
     ever sent over it."""
-    crt, key = SECRETS / "jarvis-lan.crt", SECRETS / "jarvis-lan.key"
+    crt, key = SECRETS / "roktar-lan.crt", SECRETS / "roktar-lan.key"
     try:
         if not (crt.exists() and key.exists()):
             _make_cert(crt, key)
@@ -133,7 +133,7 @@ def _make_cert(crt, key):
     SECRETS.mkdir(parents=True, exist_ok=True)
     (SECRETS / ".gitignore").write_text("*\n", encoding="utf-8")
     k = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Jarvis on this PC")])
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Roktar on this PC")])
     now = datetime.datetime.now(datetime.timezone.utc)
     alts = [x509.DNSName("localhost"), x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]
     ip = lan_ip()
@@ -165,12 +165,12 @@ def network_kind() -> str:
 
 
 def keep_awake():
-    """While Jarvis runs, the PC doesn't go to sleep (the screen may still switch off), so the
-    phone can always reach him. Windows undoes it by itself the moment Jarvis closes."""
+    """While Roktar runs, the PC doesn't go to sleep (the screen may still switch off), so the
+    phone can always reach him. Windows undoes it by itself the moment Roktar closes."""
     if IS_WIN and CFG.get("keep_awake", True):
         import ctypes
         ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
-        log.info("keeping the PC awake while Jarvis runs")
+        log.info("keeping the PC awake while Roktar runs")
 
 
 PHONE_URL = ""
@@ -206,7 +206,7 @@ class Hub:
         return self.active if self.active in self.clients else None
 
     async def send_voice(self, obj: dict):
-        """Jarvis's voice plays on the screen he's using (PC or phone); the others show the
+        """Roktar's voice plays on the screen he's using (PC or phone); the others show the
         words silently, so two speakers never talk over each other."""
         target, dead = self.speaker(), []
         for ws in list(self.clients):
@@ -328,7 +328,7 @@ async def permission_gate(name: str, inp: dict, scope: str | None = None) -> boo
 async def camera_provider():
     """The brain asked for a camera picture; the window takes it."""
     if not HUB.clients:
-        return None, "The Jarvis window isn't open."
+        return None, "The Roktar window isn't open."
     cid = uuid.uuid4().hex
     fut = asyncio.get_running_loop().create_future()
     HUB.cams[cid] = fut
@@ -338,10 +338,10 @@ async def camera_provider():
         data, note = await asyncio.wait_for(fut, 20)
         if data:
             note = ("his phone's front camera" if HUB.where.get(target, "").startswith("phone")
-                    else "the PC's camera" if target is not None else "the Jarvis window's camera")
+                    else "the PC's camera" if target is not None else "the Roktar window's camera")
         return data, note
     except asyncio.TimeoutError:
-        return None, "The camera didn't answer. Is it allowed in the Jarvis window?"
+        return None, "The camera didn't answer. Is it allowed in the Roktar window?"
     finally:
         HUB.cams.pop(cid, None)
 
@@ -458,7 +458,7 @@ class Conversation:
                     await asyncio.wait_for(speaker, 120)
                 except Exception:
                     speaker.cancel()
-                HUB.remember("jarvis", "".join(reply).strip())
+                HUB.remember("roktar", "".join(reply).strip())
                 LAST_TURN["at"] = time.time()
                 try:
                     TURNLOG.record(answered_by(), text, "".join(reply).strip(), used, errors)
@@ -492,8 +492,8 @@ CONVO = Conversation()
 
 
 # ------------------------------------------------------- brain switching ----
-# The BRAIN button (or switch_brain, when he asks by voice) saves the choice in jarvis.json,
-# leaves a note, and restarts Jarvis. The new Jarvis reads the note, checks which brain
+# The BRAIN button (or switch_brain, when he asks by voice) saves the choice in roktar.json,
+# leaves a note, and restarts Roktar. The new Roktar reads the note, checks which brain
 # really came up, and says so.
 SWITCH = {"choice": None}
 RESTART = {"go": False}
@@ -524,12 +524,12 @@ async def request_switch(choice: str, from_button: bool = False) -> str:
     if from_button:
         await CONVO.stop(quiet=True)
     asyncio.create_task(_restart_brains(choice, wait_for_turn=not from_button))
-    return (f"Saved: Jarvis will use {label}. Jarvis restarts its brain in a few seconds and "
+    return (f"Saved: Roktar will use {label}. Roktar restarts its brain in a few seconds and "
             f"confirms the new one. Tell {CFG['call_me']} that in one short sentence.")
 
 
 async def _restart_brains(choice: str, wait_for_turn: bool):
-    """Restart both brains with the new setting, inside this same Jarvis (the window stays open),
+    """Restart both brains with the new setting, inside this same Roktar (the window stays open),
     then check which brain really came up and say so."""
     if wait_for_turn:                           # let the brain finish its goodbye, and the window say it
         t0 = time.monotonic()
@@ -605,7 +605,7 @@ def switch_report(choice: str) -> str:
 
 
 async def announce(text: str):
-    HUB.remember("jarvis", text)
+    HUB.remember("roktar", text)
     audio = await MOUTH.synth(text)
     await HUB.send_voice({"type": "announce", "text": text, "audio": _b64(audio)})
     await push_status()
@@ -613,7 +613,7 @@ async def announce(text: str):
 
 async def log_note(text: str):
     """A silent entry in his LOG panel (links in it are clickable)."""
-    HUB.remember("jarvis", text)
+    HUB.remember("roktar", text)
     await HUB.send({"type": "log_note", "text": text})
 
 
@@ -653,7 +653,7 @@ LEARNER.windows = lambda: len(HUB.clients)
 LEARNER.other_busy = lambda: SELFTEST.running
 tools.STATE.ability_learner = LEARNER.start
 tools.STATE.gate = permission_gate
-PHONE = phonehands.PhoneHands()                 # his hands on the phone (the Jarvis Hands app)
+PHONE = phonehands.PhoneHands()                 # his hands on the phone (the Roktar Hands app)
 tools.STATE.phone = PHONE
 
 
@@ -690,7 +690,7 @@ async def confirm_switch(note: dict, starting: list):
     await announce(text)
     if note["choice"] == "opus" and CLAUDE.status == "ready":
         await asyncio.sleep(5)                  # let the confirmation finish playing
-        SELFTEST.start("he switched Jarvis to Claude Opus")
+        SELFTEST.start("he switched Roktar to Claude Opus")
 
 
 # ------------------------------------------------------------ websocket ----
@@ -698,9 +698,9 @@ async def ws_handler(request: web.Request):
     if not origin_ok(request):
         log.warning("refused a live link from %s (page %s, address %s)", request.remote,
                     request.headers.get("Origin"), request.host)
-        return web.Response(status=403, text="Only the Jarvis window may connect.")
+        return web.Response(status=403, text="Only the Roktar window may connect.")
     if RESTART["go"]:                            # on the way out: the window should wait for the new one
-        return web.Response(status=503, text="Jarvis is restarting.")
+        return web.Response(status=503, text="Roktar is restarting.")
     # compress=False: with compression on, aiohttp 3.14 drops the link when a browser's first
     # message after a heartbeat reply is compressed ("non-zero reserved bits"), losing that
     # message (often his first question). Everything here is local, so compression isn't needed.
@@ -742,7 +742,7 @@ async def ws_handler(request: web.Request):
 
 # ------------------------------------------------- orders from the chief of staff ----
 # Claude (Opus, in Dr Wolf's Cowork app) can't press keys in this window, so it leaves small jobs
-# as text files in memory/chief/orders/. When Jarvis is idle he takes the oldest one, does it as if
+# as text files in memory/chief/orders/. When Roktar is idle he takes the oldest one, does it as if
 # Dr Wolf had typed it (ALLOW cards and the hard lines still apply), and writes his reply to
 # memory/chief/done/ for Claude to read. memory/ never goes to GitHub.
 CHIEF = MEMORY / "chief"
@@ -759,7 +759,7 @@ async def chief_loop():
             his = [h for h in HUB.history if h.get("who") == "you" and not h.get("chief")]
             asked = bool(his) and re.search(r"mail ?box|order|chief", his[-1].get("text", ""), re.I)
             if not orders or busy or (his and not asked and time.time() - his[-1]["t"] < 90):
-                continue                            # nothing to do, or he's using Jarvis right now
+                continue                            # nothing to do, or he's using Roktar right now
             job = orders[0]
             text = job.read_text(encoding="utf-8").strip()
             doing = CHIEF / "doing" / job.name
@@ -777,7 +777,7 @@ async def chief_loop():
                 await asyncio.sleep(2)
             reply = "\n\n".join(f"{h['who']}: {h['text']}" for h in HUB.history[start + 1:])
             (CHIEF / "done" / job.name).write_text(
-                f"# {job.stem}\n\n## Order\n{text}\n\n## Jarvis\n{reply or '(no reply)'}\n", encoding="utf-8")
+                f"# {job.stem}\n\n## Order\n{text}\n\n## Roktar\n{reply or '(no reply)'}\n", encoding="utf-8")
             doing.unlink(missing_ok=True)
         except asyncio.CancelledError:
             raise
@@ -909,7 +909,7 @@ async def start_deepseek():
 
 
 async def api_feedback(request):
-    """The GOOD / WRONG buttons: a verdict on Jarvis's last answer (and what was wrong, if typed)."""
+    """The GOOD / WRONG buttons: a verdict on Roktar's last answer (and what was wrong, if typed)."""
     d = await request.json()
     good = bool(d.get("good"))
     ok = TURNLOG.feedback(None, good, str(d.get("note") or "")[:300])
@@ -942,7 +942,7 @@ async def run_growth(spoken: bool):
     if spoken:
         await announce(msg)
     else:
-        HUB.remember("jarvis", msg)
+        HUB.remember("roktar", msg)
         await HUB.send({"type": "toast", "text": msg, "kind": "ok"})
 
 
@@ -975,10 +975,10 @@ builder.GEMINI = GEMINI
 
 
 # ------------------------------------------------------------ test bench ----
-# With "test_bench": true in jarvis.json, a list of eyes/hands tool calls dropped into
+# With "test_bench": true in roktar.json, a list of eyes/hands tool calls dropped into
 # logs/tmp/bench-request.json is run on the real screen, and what happened (each tool's reply, a
 # screenshot after each step, which window had the keyboard) is written to logs/tmp/bench/.
-# It lets the hands be tested properly without anyone typing into Jarvis.
+# It lets the hands be tested properly without anyone typing into Roktar.
 BENCH_TOOLS = {"run_self_test", "read_whole_page", "look_at_screen", "see_buttons", "click_button", "look_closer", "read_screen_text",
                "click_text", "click_at", "type_text", "press_keys", "scroll", "open_app", "open_url",
                "list_windows", "focus_window", "android_build", "github_build", "github_build_status", "github_publish", "samasa"}
@@ -1030,7 +1030,7 @@ async def bench_loop():
 
 
 async def growth_loop():
-    """Once a day, when he's not using Jarvis: at night (1-6 am), or any idle time if it's overdue."""
+    """Once a day, when he's not using Roktar: at night (1-6 am), or any idle time if it's overdue."""
     while True:
         await asyncio.sleep(30 * 60)
         try:
@@ -1060,7 +1060,7 @@ async def api_phone_result(request):
 
 
 async def api_selftest_report(request):
-    """The self-check page tells Jarvis what really happened on it (clicks, typing, scrolling)."""
+    """The self-check page tells Roktar what really happened on it (clicks, typing, scrolling)."""
     try:
         SELFTEST.page_report(await request.json())
     except ValueError:
@@ -1122,11 +1122,11 @@ async def start_ears():
 @web.middleware
 async def guard(request: web.Request, handler):
     if not host_ok(request.host):                       # blocks DNS-rebinding tricks
-        log.warning("refused %s %s from %s: address %r isn't Jarvis's", request.method, request.path,
+        log.warning("refused %s %s from %s: address %r isn't Roktar's", request.method, request.path,
                     request.remote, request.host)
         return web.Response(status=403, text="forbidden")
     if request.method != "GET" and not origin_ok(request):
-        return web.Response(status=403, text="Only the Jarvis window may do that.")
+        return web.Response(status=403, text="Only the Roktar window may do that.")
     resp = await handler(request)
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -1179,7 +1179,7 @@ async def face_config(request):
 
 
 async def api_ping(request):
-    return web.json_response({"jarvis": True, "name": CFG["name"]})
+    return web.json_response({"roktar": True, "name": CFG["name"]})
 
 
 async def api_status(request):
@@ -1205,7 +1205,7 @@ async def api_face(request):
         raise web.HTTPBadRequest()
     CFG["face"] = face
     try:
-        path = APP / "jarvis.json"
+        path = APP / "roktar.json"
         cfg = json.loads(path.read_text(encoding="utf-8"))
         cfg["face"] = face
         path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
@@ -1326,7 +1326,7 @@ def open_window():
 def maximize_window() -> bool:
     """Edge ignores --start-maximized when it is already running (the new process hands the
     window to the old one, which reuses its last size), so the window can come up small in a
-    corner. Find the Jarvis window ourselves and maximize it. True once it's done."""
+    corner. Find the Roktar window ourselves and maximize it. True once it's done."""
     if not IS_WIN:
         return True
     import ctypes
@@ -1340,7 +1340,7 @@ def maximize_window() -> bool:
             cls = ctypes.create_unicode_buffer(120)
             u32.GetClassNameW(h, cls, 120)
             t = tools._title(h)
-            if cls.value.startswith("Chrome_WidgetWin") and (t.strip().upper() == "JARVIS" or tools._is_jarvis(t)):
+            if cls.value.startswith("Chrome_WidgetWin") and (t.strip().upper() == "ROKTAR" or tools._is_roktar(t)):
                 found.append(h)
         return True
 
@@ -1365,7 +1365,7 @@ async def _maximize_soon():
 def already_running() -> bool:
     try:
         with urllib.request.urlopen(URL + "api/ping", timeout=2) as r:
-            return json.loads(r.read()).get("jarvis") is True
+            return json.loads(r.read()).get("roktar") is True
     except Exception:
         return False
 
@@ -1401,7 +1401,7 @@ async def serve(note: dict | None):
     print(f"  {CFG['name']} is running at {URL}")
     if PHONE_URL:
         print(f"  On your phone (Chrome or the app):  {PHONE_URL}")
-    print("  Keep this window open. Closing it switches Jarvis off.")
+    print("  Keep this window open. Closing it switches Roktar off.")
     print()
     if PHONE_URL:
         kind = await asyncio.to_thread(network_kind)
@@ -1443,7 +1443,7 @@ async def serve(note: dict | None):
                 HISTORY_FILE.write_text(json.dumps(HUB.history[-200:]), encoding="utf-8")
             except OSError:
                 pass
-        for ws in list(HUB.clients):             # the window reconnects to the new Jarvis by itself
+        for ws in list(HUB.clients):             # the window reconnects to the new Roktar by itself
             try:
                 await asyncio.wait_for(ws.close(code=1012, message=b"restarting"), 2)
             except Exception:
@@ -1455,10 +1455,10 @@ async def serve(note: dict | None):
 
 
 def relaunch():
-    """Start a fresh Jarvis exactly the way he does (Explorer opens the .bat in its own window),
-    so the new Jarvis doesn't belong to this one's window or process tree. Then this one ends."""
-    bat = next((ROOT / n for n in ("Start-Jarvis-Max.bat", "Start-Jarvis-Assistant.bat")
-                if (ROOT / n).exists()), ROOT / "Start-Jarvis-Max.bat")
+    """Start a fresh Roktar exactly the way he does (Explorer opens the .bat in its own window),
+    so the new Roktar doesn't belong to this one's window or process tree. Then this one ends."""
+    bat = next((ROOT / n for n in ("Start-Roktar-Max.bat",)
+                if (ROOT / n).exists()), ROOT / "Start-Roktar-Max.bat")
     if IS_WIN and bat.exists():
         try:
             subprocess.Popen(["explorer.exe", str(bat)])
@@ -1499,13 +1499,13 @@ def main():
         shutil.copytree(seed, MEMORY, dirs_exist_ok=True)      # first start: a fresh memory vault
         log.info("first start: memory vault created from memory-template")
     note = read_switch_note()
-    if note:                                     # a brain switch: the old Jarvis is on its way out
+    if note:                                     # a brain switch: the old Roktar is on its way out
         for _ in range(40):
             if not already_running():
                 break
             time.sleep(0.5)
     if already_running():
-        print("  Jarvis is already running. Opening its window.")
+        print("  Roktar is already running. Opening its window.")
         open_window()
         return
     try:
@@ -1513,8 +1513,8 @@ def main():
     except KeyboardInterrupt:
         pass
     except OSError as e:
-        print(f"\n  Jarvis couldn't start: port {PORT} is in use by another program ({e}).")
-        print("  Change \"port\" in app\\jarvis.json, or restart the PC.")
+        print(f"\n  Roktar couldn't start: port {PORT} is in use by another program ({e}).")
+        print("  Change \"port\" in app\\roktar.json, or restart the PC.")
         sys.exit(1)
     if RESTART["go"]:
         print(f"  Restarting {CFG['name']} with the new brain...")

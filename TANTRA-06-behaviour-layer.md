@@ -18,9 +18,9 @@ alone it derives activity, step, retries, busy time, mood, and vitals, then broa
   dock.js: passes `behave` events to the face). Every edit checks its anchor and stops if it doesn't match.
 
 ## TANTRA (install, done by Opus or a builder)
-1. Copy `behaviour.py` → `Jarvis-Max\app\`, `living/index.html` → `Jarvis-Max\app\face\faces\living\`.
-2. In `Jarvis-Max\app` run: `python apply_bl.py` → prints "behaviour layer wired".
-3. Dr Wolf restarts Jarvis.
+1. Copy `behaviour.py` → `Roktar-Max\app\`, `living/index.html` → `Roktar-Max\app\face\faces\living\`.
+2. In `Roktar-Max\app` run: `python apply_bl.py` → prints "behaviour layer wired".
+3. Dr Wolf restarts Roktar.
 
 ## TEST (Dr Wolf)
 1. Ask "open Notepad": the step line shows the steps, the face watches the hands, and at the end you get ★, XP and confetti.

@@ -1,4 +1,4 @@
-"""Behaviour Layer: what Jarvis is doing, made observable, honest and logged (TANTRA-06).
+"""Behaviour Layer: what Roktar is doing, made observable, honest and logged (TANTRA-06).
 
 The server tells this module what really happens (a turn starts, a tool runs, the tool succeeds or
 fails, a permission is asked, the turn ends). From those facts alone it derives:

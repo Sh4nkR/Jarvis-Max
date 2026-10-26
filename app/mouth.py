@@ -1,9 +1,9 @@
 """Mouth: turns reply sentences into speech (Microsoft's free neural voices via edge-tts).
 
 jaredrhod's backtalk uses Kokoro. Kokoro on Windows needs PyTorch (about 2 GB)
-plus espeak-ng installed separately, so Jarvis uses edge-tts instead: small,
+plus espeak-ng installed separately, so Roktar uses edge-tts instead: small,
 natural, British. If it can't reach the voice service, the window falls back
-to the browser's built-in voice, so Jarvis never goes mute.
+to the browser's built-in voice, so Roktar never goes mute.
 """
 import logging
 import re
@@ -11,7 +11,7 @@ import time
 
 from common import CFG, load_config
 
-log = logging.getLogger("jarvis.mouth")
+log = logging.getLogger("roktar.mouth")
 
 _CODE = re.compile(r"```.*?```", re.S)
 _LINK = re.compile(r"\[([^\]]+)\]\((https?://[^)]+)\)")
@@ -152,7 +152,7 @@ class Mouth:
             return None
 
     def set_style(self, style: str) -> str:
-        """Switch Jarvis's voice (kept in jarvis.json, so it survives restarts)."""
+        """Switch Roktar's voice (kept in roktar.json, so it survives restarts)."""
         style = (style or "").strip().lower()
         if style not in VOICES:
             return "Voices I have: " + ", ".join(VOICES) + "."
@@ -164,7 +164,7 @@ class Mouth:
         try:
             import json
             from common import APP
-            p = APP / "jarvis.json"
+            p = APP / "roktar.json"
             cfg = json.loads(p.read_text(encoding="utf-8"))
             cfg["voice_style"] = style
             p.write_text(json.dumps(cfg, indent=2), encoding="utf-8")

@@ -1,8 +1,8 @@
 """The brain: a live Claude Code session through the Claude Agent SDK.
 
 This is the same brain jaredrhod's backtalk uses. It runs on Dr Wolf's Claude
-plan (no API key). Its working folder is Jarvis-Max/memory, so the
-CLAUDE.md there is Jarvis's identity and the notes there are its memory.
+plan (no API key). Its working folder is Roktar-Max/memory, so the
+CLAUDE.md there is Roktar's identity and the notes there are its memory.
 """
 import asyncio
 import logging
@@ -18,9 +18,9 @@ import tools
 from common import CFG, MEMORY, load_config
 from growth import prompt_addon
 
-log = logging.getLogger("jarvis.brain")
+log = logging.getLogger("roktar.brain")
 
-# Deliberate: the read-only tools and Jarvis's own eyes/hands are pre-approved (the HANDS
+# Deliberate: the read-only tools and Roktar's own eyes/hands are pre-approved (the HANDS
 # button is the switch for those), so the SDK's "callback is shadowed" notice is expected.
 try:
     from claude_agent_sdk import CanUseToolShadowedWarning
@@ -32,8 +32,8 @@ NAME = CFG["name"].title() if CFG["name"].isupper() else CFG["name"]
 CALL = CFG["call_me"]
 
 VOICE_RULES = f"""
-# Right now: the Jarvis voice window
-You are {NAME}. {CALL} is talking to you through the Jarvis window on his Windows PC.
+# Right now: the Roktar voice window
+You are {NAME}. {CALL} is talking to you through the Roktar window on his Windows PC.
 His speech is transcribed, and every word you write is read aloud in a British voice.
 The window shows your animated face (the Living Face by default, or one of five others). It
 listens, thinks and speaks along with you, and shows your mood and vitals. Below it is a dock of
@@ -73,11 +73,11 @@ and STOP. He often uses the same window on his phone, in Chrome.
 - Ask before you delete anything, send a message as him or install software.
 
 # Brains
-You are on the Claude brain. Jarvis can also run on Claude Sonnet, Claude Opus, Claude Haiku,
+You are on the Claude brain. Roktar can also run on Claude Sonnet, Claude Opus, Claude Haiku,
 a local Qwen model on this PC, Google's Gemini or Gemini Flash-Lite, DeepSeek, Kimi K3 or Kimi K2.8, or Auto (Claude first, local when his Claude limit
 runs out). When
-he asks to change brain or model, call switch_brain straight away; it restarts Jarvis and
-confirms the new brain on startup. Never edit jarvis.json or restart Jarvis yourself.
+he asks to change brain or model, call switch_brain straight away; it restarts Roktar and
+confirms the new brain on startup. Never edit roktar.json or restart Roktar yourself.
 When he tells you to go to your lessons, classes or daily learning, call start_lessons.
 
 # GitHub builds and publishing
@@ -100,7 +100,7 @@ doing something, and a line in today's daily note. Then tell him in one or two s
 learned and where you saved it.
 
 # Writing a skill guide
-When he asks you to write a skill, recipe or guide for Jarvis (often so the small local brain can
+When he asks you to write a skill, recipe or guide for Roktar (often so the small local brain can
 do a job), write ONE file notes/skills/<Short Name>.md in plain, simple words:
 line 1 the title; then "Use when: <the words he'd say>"; then numbered steps, each naming the exact
 tool to call and what to pass (e.g. "3. click_text 'Build'"); then "Check: <how to know it worked>"
@@ -144,7 +144,7 @@ def describe(name: str, inp: dict) -> str:
     """One line a person can read, for the log and permission prompts."""
     n = name.replace(f"mcp__{tools.SERVER_NAME}__", "")
     if n == "project_download":
-        return f"download {inp.get('url', '')} into Desktop\\Jarvis-Builds ({inp.get('facts', '')})"
+        return f"download {inp.get('url', '')} into Desktop\\Roktar-Builds ({inp.get('facts', '')})"
     if n == "project_write":
         files = inp.get("files") or []
         return (f"write {len(files)} file(s) in {inp.get('folder', '')}: {', '.join(files[:12])}"
@@ -230,7 +230,7 @@ class Brain:
             env={"ENABLE_TOOL_SEARCH": "false"},
             stderr=lambda line: log.warning("claude code says: %s", line.rstrip()[:300]),
         )
-        # Re-read jarvis.json so a brain switch (Sonnet/Opus) applies on a fresh conversation
+        # Re-read roktar.json so a brain switch (Sonnet/Opus) applies on a fresh conversation
         # without restarting the whole app.
         model = load_config().get("model")
         if model:

@@ -1,7 +1,7 @@
-/* Jarvis dock: our buttons, laid over jaredrhod's face (ai-visualizer, AGPL-3.0).
+/* Roktar dock: our buttons, laid over jaredrhod's face (ai-visualizer, AGPL-3.0).
    His face files are served unchanged. This script loads first and does two jobs:
    1. It answers the face's "/state" question from here, with the real voice
-      waveform of what Jarvis is saying, so the face moves with the actual speech.
+      waveform of what Roktar is saying, so the face moves with the actual speech.
    2. It builds the dock: TALK, LISTEN, type box, SEND, CAMERA, SCREEN, SEARCH, MEMORY,
       HANDS, VOICE, LOG, FACE, BRAIN, STOP. Every control is a single click. */
 "use strict";
@@ -42,11 +42,11 @@
   // read-only hints for the Living Face (what he's saying, link state, camera)
   window.JV_FACE = { reply: () => replyText || "", offline: () => status.brain === "offline", camera: () => !!camStream };
   let turnOpen = false, searchMode = false, replyText = "";
-  // Jarvis can be open on the PC and on the phone at once. The screen he asked from speaks;
+  // Roktar can be open on the PC and on the phone at once. The screen he asked from speaks;
   // the other one shows the words silently (quietTurn).
   let myId = null, quietTurn = false, phoneUrl = "";
   const PHONE = matchMedia("(pointer: coarse)").matches;
-  const HINT = PHONE ? "Type to Jarvis" : "Type to Jarvis, press Enter";
+  const HINT = PHONE ? "Type to Roktar" : "Type to Roktar, press Enter";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   try { voiceOn = localStorage.getItem("jv_voice") !== "0"; } catch (e) {}
@@ -148,7 +148,7 @@
 
   /* --------------------------------------------------------------- the DOM -- */
   function build() {
-    document.title = "JARVIS";
+    document.title = "ROKTAR";
     const root = document.createElement("div");
     root.id = "jv-root";
     root.innerHTML = `
@@ -164,39 +164,39 @@
       <div id="jv-dock">
         <div class="jv-row">
           <button id="jv-talk" title="Talk (F2): click, speak, click again">${ICON.mic}<span>TALK</span></button>
-          <button id="jv-free" title="Hands-free: Jarvis listens on its own and answers when you pause. Click again to turn it off.">${ICON.mic}<span>LISTEN</span></button>
-          <button id="jv-add" title="Add pictures, PDFs or text files for Jarvis to read, remember and learn from">+</button>
+          <button id="jv-free" title="Hands-free: Roktar listens on its own and answers when you pause. Click again to turn it off.">${ICON.mic}<span>LISTEN</span></button>
+          <button id="jv-add" title="Add pictures, PDFs or text files for Roktar to read, remember and learn from">+</button>
           <input id="jv-file" type="file" multiple hidden accept="image/*,.pdf,.txt,.md,.csv,.json,.html,.htm,.log,.xml">
           <input id="jv-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${HINT}">
           <button id="jv-send">${ICON.send}SEND</button>
-          <button id="jv-good" class="jv-verdict" title="That answer was right. Jarvis keeps doing it that way.">${ICON.up}</button>
-          <button id="jv-bad" class="jv-verdict" title="That answer was wrong. Type what was wrong in the box first if you like; Jarvis learns from it tonight.">${ICON.down}</button>
+          <button id="jv-good" class="jv-verdict" title="That answer was right. Roktar keeps doing it that way.">${ICON.up}</button>
+          <button id="jv-bad" class="jv-verdict" title="That answer was wrong. Type what was wrong in the box first if you like; Roktar learns from it tonight.">${ICON.down}</button>
         </div>
         <div class="jv-row jv-tools">
-          <button id="jv-camera" title="Camera on/off. While on, Jarvis sees what the camera sees with each question.">${ICON.cam}CAMERA</button>
-          <button id="jv-screen" title="Jarvis looks at your screen">${ICON.screen}SCREEN</button>
+          <button id="jv-camera" title="Camera on/off. While on, Roktar sees what the camera sees with each question.">${ICON.cam}CAMERA</button>
+          <button id="jv-screen" title="Roktar looks at your screen">${ICON.screen}SCREEN</button>
           <button id="jv-search" title="Search the web for what's in the box">${ICON.search}SEARCH</button>
-          <button id="jv-memory" title="What Jarvis remembers">${ICON.memory}MEMORY</button>
-          <button id="jv-hands" title="Let Jarvis use the mouse and keyboard">${ICON.hand}<span>HANDS</span></button>
+          <button id="jv-memory" title="What Roktar remembers">${ICON.memory}MEMORY</button>
+          <button id="jv-hands" title="Let Roktar use the mouse and keyboard">${ICON.hand}<span>HANDS</span></button>
           <button id="jv-voice" title="Spoken replies on/off">${ICON.voice}<span>VOICE</span></button>
           <button id="jv-log" title="The whole conversation">${ICON.log}LOG</button>
-          <button id="jv-face" title="Switch Jarvis's face">${ICON.face}FACE</button>
-          <button id="jv-brainbtn" title="Choose Jarvis's brain: Claude Sonnet, Opus or Haiku, Local Qwen, Gemini, Gemini Flash-Lite, DeepSeek, Kimi K3, Kimi K2.8 or Auto">${ICON.brain}BRAIN</button>
+          <button id="jv-face" title="Switch Roktar's face">${ICON.face}FACE</button>
+          <button id="jv-brainbtn" title="Choose Roktar's brain: Claude Sonnet, Opus or Haiku, Local Qwen, Gemini, Gemini Flash-Lite, DeepSeek, Kimi K3, Kimi K2.8 or Auto">${ICON.brain}BRAIN</button>
           <button id="jv-stop" title="Stop (Esc)">${ICON.stop}STOP</button>
         </div>
       </div>
       <div id="jv-panel"><header><span id="jv-ptitle">LOG</span><button id="jv-pclose">CLOSE</button></header><div class="jv-body" id="jv-pbody"></div></div>
-      <div class="jv-card" id="jv-perm"><h2>PERMISSION NEEDED</h2><p>Jarvis wants to:</p><code id="jv-permtext"></code>
+      <div class="jv-card" id="jv-perm"><h2>PERMISSION NEEDED</h2><p>Roktar wants to:</p><code id="jv-permtext"></code>
         <div class="btns"><button class="jv-yes" id="jv-allow">ALLOW</button><button class="jv-no" id="jv-deny">DENY</button></div></div>
       <div class="jv-card" id="jv-repair"><h2 id="jv-repair-title">FIX PROPOSED BY CLAUDE OPUS</h2>
         <p id="jv-repair-sum"></p><p class="jv-small" id="jv-repair-cause"></p>
         <pre id="jv-repair-diff"></pre>
-        <p class="jv-small" id="jv-repair-note">Nothing changes unless you press ALLOW. Then Jarvis applies the fix; restart him and he checks everything again, keeping the fix only if every check passes.</p>
+        <p class="jv-small" id="jv-repair-note">Nothing changes unless you press ALLOW. Then Roktar applies the fix; restart him and he checks everything again, keeping the fix only if every check passes.</p>
         <div class="btns"><button class="jv-yes" id="jv-repair-yes">ALLOW: APPLY THE FIX</button><button class="jv-no" id="jv-repair-no">DENY</button></div></div>
       <div class="jv-card" id="jv-brains"><h2>CHOOSE THE BRAIN</h2>
         <div class="jv-brainopts" id="jv-brainopts"></div>
-        <p class="jv-small">Jarvis restarts its brain to switch (about 10 seconds), then says which brain came up.</p></div>
-      <div class="jv-card" id="jv-restart"><h2>RESTARTING JARVIS</h2>
+        <p class="jv-small">Roktar restarts its brain to switch (about 10 seconds), then says which brain came up.</p></div>
+      <div class="jv-card" id="jv-restart"><h2>RESTARTING ROKTAR</h2>
         <p id="jv-restart-msg">Switching brain…</p></div>
       <div class="jv-card" id="jv-gemkey"><h2>GEMINI API KEY</h2>
         <p>The Gemini brain needs a Gemini API key (free from Google).</p>
@@ -211,7 +211,7 @@
         <p class="jv-small" id="jv-dskey-msg"></p>
         <div class="btns"><button class="jv-yes" id="jv-dskey-save">SAVE KEY</button><button class="jv-no" id="jv-dskey-close">LATER</button></div></div>
       <div class="jv-card" id="jv-signin"><h2>ONE-TIME SIGN-IN</h2>
-        <p>Jarvis's brain is Claude Code on your Claude plan. It needs you to sign in once.</p>
+        <p>Roktar's brain is Claude Code on your Claude plan. It needs you to sign in once.</p>
         <p id="jv-signin-msg">Press SIGN IN. A Claude page opens in your browser: sign in and click <b>Authorize</b>. Then come back here.</p>
         <div class="btns"><button class="jv-yes" id="jv-signin-go">SIGN IN</button></div></div>`;
     document.body.appendChild(root);
@@ -262,19 +262,19 @@
 
     $("jv-talk").onclick = talk;
     $("jv-free").onclick = toggleListen;
-    // Inside the Jarvis Hands phone app, the PHONE does the mic and the typing (native Android),
+    // Inside the Roktar Hands phone app, the PHONE does the mic and the typing (native Android),
     // because the app's built-in browser blocks the web mic and garbles soft-keyboard typing.
-    const NATIVE = window.AndroidJarvis && /JarvisHands/.test(navigator.userAgent);
+    const NATIVE = window.AndroidRoktar && /RoktarHands/.test(navigator.userAgent);
     window.jvAsk = (t) => { t = (t || "").trim(); if (t) ask(t); };
     window.jvNote = (t, kind) => toast(t, kind || "", 5000);
     window.jvMic = (on) => { $("jv-talk").classList.toggle("lit", !!on); };
     window.jvListen = (on) => { $("jv-free").classList.toggle("lit", !!on); };
     if (NATIVE) {
-      $("jv-talk").onclick = () => AndroidJarvis.talk();
-      $("jv-free").onclick = () => AndroidJarvis.listen();
+      $("jv-talk").onclick = () => AndroidRoktar.talk();
+      $("jv-free").onclick = () => AndroidRoktar.listen();
       $("jv-input").readOnly = true;
-      $("jv-input").onclick = $("jv-input").onfocus = (e) => { e.target.blur(); AndroidJarvis.typeBox(); };
-      $("jv-send").onclick = () => AndroidJarvis.typeBox();
+      $("jv-input").onclick = $("jv-input").onfocus = (e) => { e.target.blur(); AndroidRoktar.typeBox(); };
+      $("jv-send").onclick = () => AndroidRoktar.typeBox();
     }
     $("jv-send").onclick = submit;
     $("jv-add").onclick = () => $("jv-file").click();
@@ -334,7 +334,7 @@
   function send(obj) {
     if (ws && ws.readyState === 1) { ws.send(JSON.stringify(obj)); return true; }
     if (obj.type === "ask") { pending.push({ obj, t: performance.now() }); return true; }   // goes when the link is back
-    toast("Jarvis isn't running. Start it with Start-Jarvis-Max.bat.");
+    toast("Roktar isn't running. Start it with Start-Roktar-Max.bat.");
     return false;
   }
 
@@ -344,10 +344,10 @@
       case "hello":
         status = d.status || {}; history = d.history || []; myId = d.you || null; phoneUrl = d.phone_url || "";
         paint(); refreshLog();
-        if (restarting && !status.switching) {        // the new Jarvis, not the old one on its way out
+        if (restarting && !status.switching) {        // the new Roktar, not the old one on its way out
           restarting = false; clearTimeout(restartT);
           $("jv-restart").classList.remove("show");
-          toast("Jarvis is back. Checking the new brain…", "ok");
+          toast("Roktar is back. Checking the new brain…", "ok");
         }
         break;
       case "restarting": showRestarting(d.label); break;
@@ -357,7 +357,7 @@
         toast("Brain restarted. Checking which one came up…", "ok");
         break;
       case "announce":
-        history.push({ who: "jarvis", text: d.text }); refreshLog();
+        history.push({ who: "roktar", text: d.text }); refreshLog();
         toast(d.text, "ok", 15000);
         if (!d.silent) enqueue({ text: d.text, audio: d.audio });
         break;
@@ -373,7 +373,7 @@
         break;
       case "delta":
         replyText += d.text;
-        // Dr Wolf's wish: Jarvis's replies are spoken, not written. Text shows only when muted.
+        // Dr Wolf's wish: Roktar's replies are spoken, not written. Text shows only when muted.
         $("jv-reply").textContent = voiceOn && !quietTurn ? "" : replyText.slice(-420);
         refreshLog();
         break;
@@ -382,7 +382,7 @@
       case "notice": if (!d.silent) enqueue({ text: d.text, audio: d.audio }); break;
       case "turn_end":
         turnOpen = false; $("jv-tool").textContent = ""; projectMode = sawToolThisTurn;
-        history.push({ who: "jarvis", text: replyText });
+        history.push({ who: "roktar", text: replyText });
         refreshLog(); settle();
         break;
       case "stopped": turnOpen = false; stopAudio(); $("jv-tool").textContent = "stopped"; break;
@@ -396,7 +396,7 @@
       case "repair": showRepair(d); break;
       case "repair_closed": if ($("jv-repair").dataset.id === d.id) $("jv-repair").classList.remove("show"); break;
       case "cleared": history = []; replyText = ""; $("jv-you").textContent = ""; $("jv-reply").textContent = ""; refreshLog(); break;
-      case "log_note": history.push({ who: "jarvis", text: d.text }); refreshLog(); break;
+      case "log_note": history.push({ who: "roktar", text: d.text }); refreshLog(); break;
       case "toast": toast(d.text, d.kind || "", d.kind === "ok" ? 15000 : 6000); break;
     }
   }
@@ -437,7 +437,7 @@
   }
   async function sendWithFiles(text) {
     const files = attached; attached = []; showAttached();
-    toast(`Sending ${files.length} file${files.length > 1 ? "s" : ""} to Jarvis…`, "ok", 4000);
+    toast(`Sending ${files.length} file${files.length > 1 ? "s" : ""} to Roktar…`, "ok", 4000);
     const saved = [], pics = [], failed = [];
     for (const f of files) {
       try {
@@ -543,7 +543,7 @@
   // sir's wish: 2 seconds of quiet ends what he's saying, in every kind of turn.
   const HF_START = 0.028, HF_STOP = 0.018, HF_HANGOVER_GENERAL_MS = 2000, HF_HANGOVER_PROJECT_MS = 2000;
   const HF_MIN_MS = 250, HF_MAX_MS = 45000;
-  // Barge-in: while Jarvis is speaking, sir talking over him (louder than Jarvis's own voice
+  // Barge-in: while Roktar is speaking, sir talking over him (louder than Roktar's own voice
   // coming back through the mic, in 3 of the last 6 ticks: speech has gaps between syllables)
   // cuts him off mid-sentence and starts listening.
   const HF_BARGE_MIN = 0.05, HF_BARGE_WINDOW_MS = 700, HF_BARGE_HITS = 4, HF_ECHO_X = 2.5, HF_LEARN_MS = 1200;
@@ -553,7 +553,7 @@
   let speakEnd = 0;
   let listenOn = false, hfStream = null, hfAnalyser = null, hfData = null, hfRec = null;
   let hfChunks = [], hfSpeechStart = 0, hfSilenceSince = null, hfTimer = null;
-  // Echo: the mic also hears Jarvis's own voice from the speakers. The first time he speaks, the
+  // Echo: the mic also hears Roktar's own voice from the speakers. The first time he speaks, the
   // first 1.2 s teach how loud that echo is compared with his voice (hfK); after that, only
   // sound clearly louder than the expected echo counts as sir talking.
   let hfK = null, hfLearn = 0, hfOut = [], speakT0 = 0, hfLoud = [], barged = false;
@@ -652,7 +652,7 @@
       }
       return;
     }
-    if (playing || queue.length) { // Jarvis is speaking: listen for sir talking over him
+    if (playing || queue.length) { // Roktar is speaking: listen for sir talking over him
       if (!speakT0) return;        // still preparing the sound: nothing to compare yet
       hfOut.push([now, outLevel()]);
       hfOut = hfOut.filter((p) => now - p[0] <= HF_OUT_WINDOW_MS);
@@ -721,8 +721,8 @@
     keepScreenOn(true);
     paint();
     hfTimer = setInterval(hfTick, 100);
-    hfAttachWorklet(src).then((ok) => console.log(ok ? "[jarvis] listening in the background too (audio thread)"
-                                                     : "[jarvis] background listening: timer only"));
+    hfAttachWorklet(src).then((ok) => console.log(ok ? "[roktar] listening in the background too (audio thread)"
+                                                     : "[roktar] background listening: timer only"));
   }
 
   /* -------------------------------------------------------------- camera -- */
@@ -748,7 +748,7 @@
       const data = currentFrame();
       send({ type: "camera_frame", id, data, note: data ? "" : "The camera gave no picture." });
     } catch (e) {
-      send({ type: "camera_frame", id, data: null, note: "The camera isn't allowed in the Jarvis window." });
+      send({ type: "camera_frame", id, data: null, note: "The camera isn't allowed in the Roktar window." });
     }
     if (!wasOn) { cameraOff(); paint(); }
   }
@@ -759,17 +759,17 @@
     $("jv-pbody").innerHTML = html;
     $("jv-panel").classList.add("open");
   }
-  // Web addresses in the log become links that open in his normal browser (via Jarvis).
+  // Web addresses in the log become links that open in his normal browser (via Roktar).
   const linkify = (s) => esc(s).replace(/https?:\/\/[^\s<>"]+/g,
     (u) => `<a class="jv-link" href="#" data-url="${u}">${u}</a>`);
   function logHtml() {
     const items = history.slice(-80);
-    if (turnOpen) items.push({ who: "jarvis", text: replyText });
-    return items.map((m) => `<div class="jv-msg ${m.who === "you" ? "you" : ""}"><div class="who">${m.who === "you" ? "YOU" : "JARVIS"}</div><div class="txt">${linkify(m.text)}</div></div>`).join("")
+    if (turnOpen) items.push({ who: "roktar", text: replyText });
+    return items.map((m) => `<div class="jv-msg ${m.who === "you" ? "you" : ""}"><div class="who">${m.who === "you" ? "YOU" : "ROKTAR"}</div><div class="txt">${linkify(m.text)}</div></div>`).join("")
       || "<p>Nothing said yet.</p>";
   }
   const LOG_BUTTONS = `<button class="jv-panelbtn" id="jv-new">START A FRESH CONVERSATION</button>` +
-    `<button class="jv-panelbtn" id="jv-learn" title="Jarvis does this by himself every night">LEARN NOW: TODAY'S LESSONS AND SKILLS</button>`;
+    `<button class="jv-panelbtn" id="jv-learn" title="Roktar does this by himself every night">LEARN NOW: TODAY'S LESSONS AND SKILLS</button>`;
   const phoneLine = () => phoneUrl && !PHONE
     ? `<p class="jv-phone">ON YOUR PHONE (same Wi-Fi), open in Chrome: <b>${esc(phoneUrl)}</b></p>` : "";
   function wireLogButtons() {
@@ -781,7 +781,7 @@
       try {
         const j = await (await realFetch("/api/grow", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json();
         toast(j.message, "ok");
-      } catch (e) { toast("Jarvis isn't running."); }
+      } catch (e) { toast("Roktar isn't running."); }
     };
   }
   async function verdict(good) {
@@ -791,7 +791,7 @@
       const r = await realFetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ good, note }) });
       const j = await r.json();
       toast(j.message, j.ok ? "ok" : "");
-    } catch (e) { toast("Jarvis isn't running."); }
+    } catch (e) { toast("Roktar isn't running."); }
   }
   function openLog() {
     if ($("jv-panel").classList.contains("open") && $("jv-ptitle").textContent === "LOG") { $("jv-panel").classList.remove("open"); return; }
@@ -824,7 +824,7 @@
     card.dataset.id = d.id;
     $("jv-repair-title").textContent = d.title || "FIX PROPOSED BY CLAUDE OPUS";
     $("jv-repair-yes").textContent = d.button || "ALLOW: APPLY THE FIX";
-    $("jv-repair-note").textContent = d.note || "Nothing changes unless you press ALLOW. Then Jarvis applies the fix; restart him and he checks everything again, keeping the fix only if every check passes.";
+    $("jv-repair-note").textContent = d.note || "Nothing changes unless you press ALLOW. Then Roktar applies the fix; restart him and he checks everything again, keeping the fix only if every check passes.";
     $("jv-repair-sum").style.whiteSpace = "pre-line";
     $("jv-repair-sum").textContent = d.summary || "Claude changed my code.";
     $("jv-repair-cause").textContent = (d.cause ? "Cause: " + d.cause + "  " : "") + "Files: " + (d.files || []).join(", ");
@@ -861,7 +861,7 @@
       const j = await r.json();
       msg.textContent = j.message || "";
       if (j.ok) { $("jv-gemkey-in").value = ""; setTimeout(() => $("jv-gemkey").classList.remove("show"), 1200); }
-    } catch (e) { msg.textContent = "Jarvis isn't running."; }
+    } catch (e) { msg.textContent = "Roktar isn't running."; }
   }
 
   let keyBrain = "deepseek";                       // which brain the shared key box is for
@@ -883,7 +883,7 @@
       const j = await r.json();
       msg.textContent = j.message || "";
       if (j.ok) { $("jv-dskey-in").value = ""; setTimeout(() => $("jv-dskey").classList.remove("show"), 1200); }
-    } catch (e) { msg.textContent = "Jarvis isn't running."; }
+    } catch (e) { msg.textContent = "Roktar isn't running."; }
   }
 
   /* --------------------------------------------------------------- brain -- */
@@ -899,7 +899,7 @@
     $("jv-brainbtn").classList.add("lit");
     let info;
     try { info = await (await realFetch("/api/brain")).json(); }
-    catch (e) { box.innerHTML = "<p>Jarvis isn't running.</p>"; return; }
+    catch (e) { box.innerHTML = "<p>Roktar isn't running.</p>"; return; }
     box.innerHTML = info.choices.map((c) =>
       `<button class="jv-brainopt${c.id === info.current ? " now" : ""}" data-id="${esc(c.id)}">
          <b>${esc(c.label)}${c.id === info.current ? " <em>NOW</em>" : ""}</b><small>${esc(c.about)}</small></button>`).join("");
@@ -917,11 +917,11 @@
   function showRestarting(label) {
     if (restarting) return;
     restarting = true; stopAudio();
-    $("jv-restart-msg").textContent = `Switching to ${label}. Jarvis is restarting its brain; back in about 10 seconds.`;
+    $("jv-restart-msg").textContent = `Switching to ${label}. Roktar is restarting its brain; back in about 10 seconds.`;
     $("jv-restart").classList.add("show");
     clearTimeout(restartT);
     restartT = setTimeout(() => {
-      $("jv-restart-msg").textContent = "Jarvis didn't come back by itself. Click Start-Jarvis-Max.bat on your Desktop.";
+      $("jv-restart-msg").textContent = "Roktar didn't come back by itself. Click Start-Roktar-Max.bat on your Desktop.";
     }, 120000);
   }
 

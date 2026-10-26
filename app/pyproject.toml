@@ -1,7 +1,7 @@
 [project]
-name = "jarvis-assistant"
+name = "roktar-assistant"
 version = "1.0.0"
-description = "Jarvis for Dr Wolf: Claude Code brain, jaredrhod face, local ears, hands on the PC."
+description = "Roktar for Dr Wolf: Claude Code brain, jaredrhod face, local ears, hands on the PC."
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "claude-agent-sdk>=0.2.100",   # the brain: Claude Code on your Claude plan (bundles the CLI)

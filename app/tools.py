@@ -1,4 +1,4 @@
-"""Jarvis's eyes and hands on the PC, offered to the brain as tools.
+"""Roktar's eyes and hands on the PC, offered to the brain as tools.
 
 Eyes:  look_at_screen (the picture), read_screen_text (words + where they are),
        look_through_camera (a frame from the window's camera).
@@ -99,7 +99,7 @@ def errors_as_words(fn):
 
 
 def _hands_off():
-    return _say("My hands are switched OFF (the HANDS button in the Jarvis window). "
+    return _say("My hands are switched OFF (the HANDS button in the Roktar window). "
                 "Tell Dr Wolf, and ask him to switch them on if he wants me to do it.", err=True)
 
 
@@ -288,8 +288,8 @@ def find_buttons(mon: dict) -> list[dict]:
         cache.AddProperty(pid)
     found, seen = [], set()
     for hwnd, title, cls in _top_windows(mon):
-        if _is_jarvis(title):
-            continue                      # never Jarvis's own window
+        if _is_roktar(title):
+            continue                      # never Roktar's own window
         browser = cls.startswith("Chrome_WidgetWin")
         for attempt in range(6):
             try:
@@ -399,16 +399,16 @@ def _by_name(items: list[dict], name: str) -> list[dict]:
     return exact or [it for it in items if want and want in _norm(it["name"])]
 
 
-# ------------------------------------------------ Jarvis's own window ----
-# The Jarvis window opens maximized and shows his captions, so the words Dr Wolf just said
-# ("click where it says Message DeepSeek") are on screen in Jarvis's own window, covering the
+# ------------------------------------------------ Roktar's own window ----
+# The Roktar window opens maximized and shows his captions, so the words Dr Wolf just said
+# ("click where it says Message DeepSeek") are on screen in Roktar's own window, covering the
 # app he means. Clicks and typing must never land there: the hands work on the other apps.
-_JARVIS_TITLES = ("j.a.r.v.i.s", "neural link", "ai-visualizer", "127.0.0.1:8795")
+_ROKTAR_TITLES = ("r.o.k.t.a.r", "neural link", "ai-visualizer", "127.0.0.1:8795")
 
 
-def _is_jarvis(title: str) -> bool:
+def _is_roktar(title: str) -> bool:
     t = (title or "").lower()
-    return any(k in t for k in _JARVIS_TITLES)
+    return any(k in t for k in _ROKTAR_TITLES)
 
 
 def _title(hwnd) -> str:
@@ -442,7 +442,7 @@ _NOT_APPS = ("Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "N
 
 
 def _step_aside() -> str:
-    """If Jarvis's own window is in front or covering the screen, send it behind the other
+    """If Roktar's own window is in front or covering the screen, send it behind the other
     windows and bring forward the app Dr Wolf was using, so the hands can reach it.
     Returns a note for the brain ('' when nothing had to move)."""
     if not IS_WIN:
@@ -450,41 +450,41 @@ def _step_aside() -> str:
     import ctypes
     u32 = ctypes.windll.user32
     h, t = _foreground()
-    if not _is_jarvis(t):
+    if not _is_roktar(t):
         _, mon = grab_screen()
         mid = _window_at(mon["left"] + mon["width"] // 2, mon["top"] + mon["height"] // 2)
-        if not _is_jarvis(mid[1]):
+        if not _is_roktar(mid[1]):
             return ""
         h = mid[0]
     _pg().press("alt")                   # lets this program hand the keyboard to another window
     u32.SetWindowPos(h, 1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)    # HWND_BOTTOM, keep size/place
     _, mon = grab_screen()
     for hwnd, title, cls in _top_windows(mon, 30):
-        if _is_jarvis(title) or cls in _NOT_APPS or not title.strip():
+        if _is_roktar(title) or cls in _NOT_APPS or not title.strip():
             continue
         u32.SetForegroundWindow(hwnd)
         time.sleep(0.25)
         if u32.GetForegroundWindow() != hwnd:
             u32.SwitchToThisWindow(hwnd, True)
         time.sleep(0.45)
-        return f"(I moved my own Jarvis window behind \"{title[:50]}\" so I could reach it.) "
-    return "(I moved my own Jarvis window to the back.) "
+        return f"(I moved my own Roktar window behind \"{title[:50]}\" so I could reach it.) "
+    return "(I moved my own Roktar window to the back.) "
 
 
-def _outside_jarvis(hits: list, mon: dict) -> tuple[list, int]:
-    """Drop matches that sit on Jarvis's own window: (kept, how many dropped)."""
+def _outside_roktar(hits: list, mon: dict) -> tuple[list, int]:
+    """Drop matches that sit on Roktar's own window: (kept, how many dropped)."""
     if not IS_WIN:
         return hits, 0
-    kept = [h for h in hits if not _is_jarvis(_window_at(h[0] + mon["left"], h[1] + mon["top"])[1])]
+    kept = [h for h in hits if not _is_roktar(_window_at(h[0] + mon["left"], h[1] + mon["top"])[1])]
     return kept, len(hits) - len(kept)
 
 
 def _find_words(phrase: str):
-    """Words on screen outside Jarvis's window: ([(x, y, line)] in screen pixels | None, message)."""
+    """Words on screen outside Roktar's window: ([(x, y, line)] in screen pixels | None, message)."""
     img, mon = grab_screen()
-    hits, dropped = _outside_jarvis(find_phrase(ocr_lines(img, 3), phrase), mon)
+    hits, dropped = _outside_roktar(find_phrase(ocr_lines(img, 3), phrase), mon)
     if not hits:                          # scattered labels read better in sparse mode
-        more, d2 = _outside_jarvis(find_phrase(ocr_lines(img, 11), phrase), mon)
+        more, d2 = _outside_roktar(find_phrase(ocr_lines(img, 11), phrase), mon)
         hits, dropped = more, dropped + d2
     if not hits and IS_WIN:               # maybe an icon button with that name
         try:
@@ -494,7 +494,7 @@ def _find_words(phrase: str):
         hits = [(it["x"] - mon["left"], it["y"] - mon["top"], f"{it['kind']} \"{it['name']}\"")
                 for it in named]
     if not hits:
-        why = (" (I only see those words in my own Jarvis window, which shows what you said; the "
+        why = (" (I only see those words in my own Roktar window, which shows what you said; the "
                "app itself isn't showing them)" if dropped else "")
         return None, (f"I can't find \"{phrase}\" on the screen{why}. If it's an icon or has no "
                       f"words, call see_buttons and click_button by number.")
@@ -502,7 +502,7 @@ def _find_words(phrase: str):
 
 
 def _seen_on_screen(text: str):
-    """Is the start of the typed text visible outside Jarvis's window? None = can't tell."""
+    """Is the start of the typed text visible outside Roktar's window? None = can't tell."""
     words = _norm(text).split()
     if not words:
         return None
@@ -518,7 +518,7 @@ def _seen_on_screen(text: str):
         ws = l["words"]
         cx = (ws[0]["x0"] + ws[-1]["x1"]) / 2 + mon["left"]
         cy = (ws[0]["y0"] + ws[0]["y1"]) / 2 + mon["top"]
-        if IS_WIN and _is_jarvis(_window_at(cx, cy)[1]):
+        if IS_WIN and _is_roktar(_window_at(cx, cy)[1]):
             continue
         if probe in _norm(l["text"]):
             return True
@@ -528,7 +528,7 @@ def _seen_on_screen(text: str):
 # ----------------------------------------------------------------- hands ----
 def _pg():
     # pyautogui's optional MouseInfo viewer pulls in tkinter (and on Linux quits the whole
-    # program when it's missing). Jarvis never opens that viewer, so give it an empty stand-in.
+    # program when it's missing). Roktar never opens that viewer, so give it an empty stand-in.
     sys.modules.setdefault("mouseinfo", types.ModuleType("mouseinfo"))
     import pyautogui
     pyautogui.FAILSAFE = True
@@ -591,13 +591,13 @@ def _guard(fn):
 # ----------------------------------------------------------------- tools ----
 # ------------------------------------------------------ reading a whole page ----
 def _front_app_rect():
-    """(hwnd, title, (l, t, r, b)) of the app window in front (never Jarvis's own), clipped to
+    """(hwnd, title, (l, t, r, b)) of the app window in front (never Roktar's own), clipped to
     the main screen."""
     import ctypes
     from ctypes import wintypes
     _step_aside()
     h, title = _foreground()
-    if not h or _is_jarvis(title):
+    if not h or _is_roktar(title):
         raise RuntimeError("No app window is in front to read. Open or click the app first.")
     r = wintypes.RECT()
     ctypes.windll.user32.GetWindowRect(h, ctypes.byref(r))
@@ -831,14 +831,14 @@ async def read_screen_text(args):
         ws = l["words"]
         cx = (ws[0]["x0"] + ws[-1]["x1"]) / 2 + mon["left"]
         cy = (min(w["y0"] for w in ws) + max(w["y1"] for w in ws)) / 2 + mon["top"]
-        if IS_WIN and _is_jarvis(_window_at(cx, cy)[1]):
-            mine += 1                     # Jarvis's own window (captions, buttons), not the app
+        if IS_WIN and _is_roktar(_window_at(cx, cy)[1]):
+            mine += 1                     # Roktar's own window (captions, buttons), not the app
             continue
         rows.append(f"({round(cx)},{round(cy)}) {l['text']}")
-    note = f" ({mine} lines from my own Jarvis window left out)" if mine else ""
+    note = f" ({mine} lines from my own Roktar window left out)" if mine else ""
     if not rows:
         if mine:
-            return _say("Only my own Jarvis window is showing; the app is behind it. click_text, "
+            return _say("Only my own Roktar window is showing; the app is behind it. click_text, "
                         "type_text with 'into', see_buttons or focus_window bring the app forward.")
         return _say("No matching text found on screen." if wants else "No readable text on screen.")
     return _say(f"{len(rows)} lines (x,y = centre, screen pixels){note}:\n" + "\n".join(rows[:200]))
@@ -891,9 +891,9 @@ async def click_at(args):
     if not STATE.hands:
         return _hands_off()
     x, y = int(args["x"]), int(args["y"])
-    if IS_WIN and _is_jarvis(_window_at(x, y)[1]):
+    if IS_WIN and _is_roktar(_window_at(x, y)[1]):
         note = await _guard(_step_aside)()
-        return _say(note + "That spot was on my own Jarvis window, not the app, so I didn't click. "
+        return _say(note + "That spot was on my own Roktar window, not the app, so I didn't click. "
                     "Look again (see_buttons, or look_at_screen grid=true) and aim at the app.", err=True)
     shot = None
     try:
@@ -949,8 +949,8 @@ async def type_text(args):
         await asyncio.sleep(0.4)
         where = f"Clicked \"{args['into']}\" at ({round(x)},{round(y)}), then "
     fg = _foreground()[1] if IS_WIN else ""
-    if IS_WIN and _is_jarvis(fg):
-        return _say(note + "The keyboard is on my own Jarvis window, so I typed nothing. Give 'into' "
+    if IS_WIN and _is_roktar(fg):
+        return _say(note + "The keyboard is on my own Roktar window, so I typed nothing. Give 'into' "
                     "(the words in the box) so I click the right box first.", err=True)
     await _guard(_paste)(args["text"])
     if args.get("enter"):
@@ -1077,21 +1077,21 @@ async def focus_window(args):
 @errors_as_words
 async def look_through_camera(args):
     if STATE.camera_provider is None:
-        return _say("The Jarvis window isn't connected.", err=True)
+        return _say("The Roktar window isn't connected.", err=True)
     b64, note = await STATE.camera_provider()
     if not b64:
         return _say(note or "The camera didn't give me a picture.", err=True)
     return {"content": [{"type": "image", "data": b64, "mimeType": "image/jpeg"},
-                        {"type": "text", "text": f"Camera picture from {note or 'the Jarvis window'}."}]}
+                        {"type": "text", "text": f"Camera picture from {note or 'the Roktar window'}."}]}
 
 
 @tool("switch_brain",
-      "Switch Jarvis to another brain. Jarvis restarts (about 15 seconds) and confirms the "
+      "Switch Roktar to another brain. Roktar restarts (about 15 seconds) and confirms the "
       "new brain when it's back. brain: 'sonnet' (Claude Sonnet), 'opus' (Claude Opus), 'haiku' (Claude Haiku), "
       "'claude' (Claude with the last Claude model used), 'local' (Qwen on this PC), "
       "'gemini' (Google's Gemini), 'gemini-lite' (Gemini Flash-Lite), 'deepseek' (DeepSeek V4, online), 'kimi-k3' (Kimi K3), 'kimi-k2' (Kimi K2.8) or "
       "'auto' (Claude first, local when the Claude limit runs out). Use it whenever Dr Wolf "
-      "asks to change brain or model. Never edit jarvis.json or restart Jarvis any other way.",
+      "asks to change brain or model. Never edit roktar.json or restart Roktar any other way.",
       {"type": "object",
        "properties": {"brain": {"type": "string", "enum": ["sonnet", "opus", "haiku", "claude", "local", "gemini", "gemini-lite",
                                                             "deepseek", "kimi-k3", "kimi-k2", "auto"]}},
@@ -1121,8 +1121,8 @@ _EMPTY = {"type": "object", "properties": {}}
 
 
 # ------------------------------------------------------ hands on the phone ----
-# These act on Dr Wolf's phone (the Jarvis Hands app), not the PC. They work only while the phone
-# app is connected and switched on. Jarvis stays out of banking/payment apps and never types
+# These act on Dr Wolf's phone (the Roktar Hands app), not the PC. They work only while the phone
+# app is connected and switched on. Roktar stays out of banking/payment apps and never types
 # passwords, PINs or OTPs (the phone enforces this too).
 async def _phone(tool, args):
     if STATE.phone is None:
@@ -1255,7 +1255,7 @@ async def run_self_test(args):
 
 
 @tool("project_start",
-      "Download a GitHub project into Desktop\\Jarvis-Builds and get a step-by-step install plan "
+      "Download a GitHub project into Desktop\\Roktar-Builds and get a step-by-step install plan "
       "(a checklist, PLAN.md) written by the consultant AI. Use it when Dr Wolf asks to download, "
       "build or install something from GitHub. Afterwards read him the plan in short lines and wait "
       "for his go. source: the GitHub link or owner/name.",
@@ -1267,7 +1267,7 @@ async def project_start(args):
 
 @tool("project_create",
       "Create a NEW small app, tool or test/debug program from Dr Wolf's description. The consultant "
-      "AI designs it and writes the code into a new folder in Desktop\\Jarvis-Builds with a "
+      "AI designs it and writes the code into a new folder in Desktop\\Roktar-Builds with a "
       "step-by-step checklist (PLAN.md): write files, install, test. Afterwards read him the plan in "
       "short lines and wait for his go, then project_next once per step. idea: what the app should "
       "do, in his words plus any detail he gave; name: a short name, if he gave one.",
@@ -1318,7 +1318,7 @@ async def github_publish(args):
 @tool("android_build",
       "Build an Android app's debug APK HERE on the PC, with Android Studio's own tools (Java, the "
       "Android SDK, the project's Gradle). He clicks ALLOW first. It can take 2 to 15 minutes (the first "
-      "build downloads a lot). The APK is saved in Desktop\\Jarvis-Builds\\APKs. Use it when he asks "
+      "build downloads a lot). The APK is saved in Desktop\\Roktar-Builds\\APKs. Use it when he asks "
       "to build an app or APK on the PC or 'locally'. folder: the app project's folder.",
       {"type": "object", "properties": {"folder": {"type": "string"}}, "required": ["folder"]})
 @errors_as_words
@@ -1342,7 +1342,7 @@ async def github_build(args):
 
 @tool("github_build_status",
       "Check the last GitHub APK build you started with github_build; when it has finished, download the "
-      "APK to Desktop\\Jarvis-Builds\\APKs. If it failed, it gives the error lines.", _EMPTY)
+      "APK to Desktop\\Roktar-Builds\\APKs. If it failed, it gives the error lines.", _EMPTY)
 @errors_as_words
 async def github_build_status(args):
     return _say(await apkbuild.github_build_status())
@@ -1411,8 +1411,8 @@ ALL += [learn_ability, list_abilities, forget_ability]
 
 
 # ------------------------------------------------------------- learned abilities ----
-# Each file in app/abilities/ is one ability Jarvis learned (learner.py). A file that fails to
-# load is skipped and noted, never allowed to stop Jarvis. A learned tool asks his ALLOW the first
+# Each file in app/abilities/ is one ability Roktar learned (learner.py). A file that fails to
+# load is skipped and noted, never allowed to stop Roktar. A learned tool asks his ALLOW the first
 # time it runs (then the usual confidence window), unless it only looks and reads (SAFE = True).
 from pathlib import Path as _Path                 # noqa: E402
 
@@ -1435,7 +1435,7 @@ def _gated(t):
 def load_abilities(core: list) -> list:
     import importlib.util
     import logging
-    log = logging.getLogger("jarvis.abilities")
+    log = logging.getLogger("roktar.abilities")
     taken, out = {t.name for t in core}, []
     if not ABILITIES.is_dir():
         return out

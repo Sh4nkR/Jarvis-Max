@@ -1,12 +1,12 @@
-"""Shared paths, settings and logging for Jarvis."""
+"""Shared paths, settings and logging for Roktar."""
 import json
 import logging
 import re
 import sys
 from pathlib import Path
 
-APP = Path(__file__).resolve().parent          # Jarvis-Max/app
-ROOT = APP.parent                              # Jarvis-Max
+APP = Path(__file__).resolve().parent          # Roktar-Max/app
+ROOT = APP.parent                              # Roktar-Max
 MEMORY = ROOT / "memory"                       # the brain's home folder (its vault)
 MODELS = ROOT / "models"                       # speech model lives here, not in your user profile
 LOGS = ROOT / "logs"
@@ -14,7 +14,7 @@ TMP = ROOT / "logs" / "tmp"
 IS_WIN = sys.platform == "win32"
 
 DEFAULTS = {
-    "name": "JARVIS",
+    "name": "ROKTAR",
     "call_me": "Dr Wolf",
     "port": 8795,
     "face": "board",
@@ -39,13 +39,20 @@ DEFAULTS = {
 def load_config() -> dict:
     cfg = dict(DEFAULTS)
     try:
-        cfg.update(json.loads((APP / "jarvis.json").read_text(encoding="utf-8")))
+        cfg.update(json.loads((APP / "roktar.json").read_text(encoding="utf-8")))
     except FileNotFoundError:
         pass                                   # first start: the defaults; the BRAIN menu creates the file
     except (OSError, ValueError) as e:
-        print(f"  (jarvis.json unreadable, using defaults: {e})")
+        print(f"  (roktar.json unreadable, using defaults: {e})")
     return cfg
 
+
+try:                                           # an older install: move it to the Roktar name once
+    import rename_migration
+    for _line in rename_migration.run(APP, ROOT):
+        print("  (rename) " + _line)
+except Exception as _e:                        # never block the start over this
+    print(f"  (rename skipped: {_e})")
 
 CFG = load_config()
 
@@ -93,7 +100,7 @@ def save_secret(name: str, value: str):
 
 
 def brain_choice(cfg: dict | None = None) -> str:
-    """Which BRAINS entry jarvis.json is set to right now."""
+    """Which BRAINS entry roktar.json is set to right now."""
     cfg = cfg or load_config()
     mode = (cfg.get("brain_mode") or "auto").lower()
     if mode == "gemini":
@@ -116,9 +123,9 @@ def pretty_model(model_id: str) -> str:
 
 
 def save_brain(choice: str) -> dict:
-    """Write the choice into jarvis.json (keeping every other setting) and return the new config."""
+    """Write the choice into roktar.json (keeping every other setting) and return the new config."""
     pick = BRAINS[choice]
-    path = APP / "jarvis.json"
+    path = APP / "roktar.json"
     try:
         cfg = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -137,7 +144,7 @@ def setup_logging() -> logging.Logger:
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s", "%H:%M:%S")
     root = logging.getLogger()
     root.setLevel(logging.INFO)
-    fh = logging.FileHandler(LOGS / "jarvis.log", encoding="utf-8")
+    fh = logging.FileHandler(LOGS / "roktar.log", encoding="utf-8")
     fh.setFormatter(fmt)
     root.addHandler(fh)
     ch = logging.StreamHandler(sys.stdout)
@@ -145,4 +152,4 @@ def setup_logging() -> logging.Logger:
     root.addHandler(ch)
     for noisy in ("aiohttp.access", "httpx", "faster_whisper", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
-    return logging.getLogger("jarvis")
+    return logging.getLogger("roktar")
